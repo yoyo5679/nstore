@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import io
+
+from PIL import Image
+
+from nstore.detail.schema import Facts, Plan, ReviewInsights, Section, Theme
 from nstore.naver import KeywordStat, ShopItem, ShopResult
 
 SILVER = ("생활/건강", "실버용품", "보행보조용품")
@@ -57,3 +62,54 @@ def walker_scenario() -> tuple[FakeSearchAd, FakeShopping]:
 
 
 WALKER_SEEDS = ["성인용보행기", "노인보행기", "실버카"]
+
+
+# ---------------------------------------------------------------- 2단계: 가짜 Gemini
+
+
+def png_bytes(color="#88AA99", size=(400, 300)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", size, color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+SAMPLE_FACTS = {
+    "product_name": "케어메이트 CM-200", "one_line": "접이식 성인용보행기", "manufacturer": "케어메이트(주)",
+    "target_users": ["보행이 불편한 어르신"],
+    "features": [{"title": "접이식", "detail": "한 번에 접힘", "source": "catalog.pdf p2"}],
+    "specs": [{"name": "무게", "value": "6.8kg"}, {"name": "최대 하중", "value": "100kg"}],
+    "components": ["본체"], "usage_steps": ["펴기"], "cautions": ["앉기 전 브레이크"],
+    "certifications": [], "unknowns": [],
+}
+
+
+def section(sid, stype="feature", mode="none", photo="", kind="scene", headline="제목", body="", items=()):
+    return {"id": sid, "type": stype, "role": "해결", "eyebrow": "", "headline": headline, "body": body,
+            "items": [{"title": t, "text": x} for t, x in items],
+            "image": {"mode": mode, "photo": photo, "kind": kind, "prompt": "walking in park"}}
+
+
+class FakeGemini:
+    def __init__(self, plan: dict | None = None):
+        self.plan = plan or {"concept": "든든한 산책", "sections": [section("s01", "hero", "generate")]}
+        self.json_calls: list[tuple[str, type, list]] = []
+        self.image_calls: list[tuple[str, list, str | None]] = []
+
+    def json(self, prompt, schema, files=(), system=None):
+        self.json_calls.append((prompt, schema, list(files)))
+        if schema is Facts:
+            return Facts.model_validate(SAMPLE_FACTS)
+        if schema is ReviewInsights:
+            return ReviewInsights(selling_points=["가벼움"], complaints=["바퀴 소음"], questions=["접은 크기?"])
+        if schema is Plan:
+            return Plan.model_validate(self.plan)
+        if schema is Section:
+            return Section.model_validate(section("바뀐id", "hero", headline="고친 헤드라인"))
+        if schema is Theme:
+            return Theme(primary="#123456", accent="xx", background="#FFFFFF", surface="#F0F0F0",
+                         text="#111111", muted="#666666", font="handwriting", radius=99, mood="차분함")
+        raise AssertionError(schema)
+
+    def image(self, prompt, references=(), aspect_ratio=None):
+        self.image_calls.append((prompt, list(references), aspect_ratio))
+        return png_bytes()

@@ -17,6 +17,9 @@ MASTER_PATH = DATA_DIR / "master.xlsx"
 KEYWORDS_PATH = DATA_DIR / "keywords.xlsx"
 CACHE_PATH = DATA_DIR / "cache.sqlite"
 SMARTSTORE_OUTPUT_PATH = OUTPUT_DIR / "smartstore_upload.xlsx"
+PRODUCTS_DIR = ROOT / "products"
+DETAIL_OUTPUT_DIR = OUTPUT_DIR / "detail"
+THEME_PATH = DATA_DIR / "theme.json"
 
 load_dotenv(ROOT / ".env")
 

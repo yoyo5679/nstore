@@ -38,3 +38,38 @@ def test_app_renders_with_results(tmp_path, monkeypatch):
     at = AppTest.from_file(APP).run(timeout=30)
     assert not at.exception
     assert len(at.dataframe) == 3  # 마스터, 키워드, 상품명 표
+
+
+def test_detail_page_edit_and_undo(tmp_path, monkeypatch):
+    from fakes import FakeGemini, png_bytes, section
+
+    from nstore.detail import planner
+    from nstore.detail.workspace import Workspace
+
+    for name, path in [("MASTER_PATH", tmp_path / "master.xlsx"), ("PRODUCTS_DIR", tmp_path / "products"),
+                       ("THEME_PATH", tmp_path / "theme.json"), ("DETAIL_OUTPUT_DIR", tmp_path / "out")]:
+        monkeypatch.setattr(config, name, path)
+    ws = Workspace("A1").ensure()
+    (ws.photos_dir / "front.jpg").write_bytes(png_bytes())
+    planner.extract_facts(ws, FakeGemini(), {})
+    plan = {"concept": "c", "sections": [section("s01", "hero", "generate"), section("s02", "faq", items=[("Q", "A")])]}
+    planner.make_plan(ws, FakeGemini(plan), {}, {}, 6)
+
+    at = AppTest.from_file(APP).run(timeout=30)
+    at.switch_page("ui/detail.py").run(timeout=30)
+    at.text_input[0].set_value("A1").run(timeout=30)
+    assert not at.exception
+    assert [t.label for t in at.tabs] == ["① 자료", "② 구성·카피", "③ 이미지", "④ 디자인", "⑤ 내보내기"]
+
+    at.text_area(key="A1:s02:headline").set_value("직접 고친 제목")
+    at.button(key="A1:s02:save").click().run(timeout=30)
+    assert not at.exception
+    assert ws.load_plan().sections[1].headline == "직접 고친 제목"
+
+    at.button(key="A1:s01:down").click().run(timeout=30)
+    assert [s.id for s in ws.load_plan().sections] == ["s02", "s01"]
+
+    undo = next(b for b in at.button if b.label.startswith("되돌리기"))
+    undo.click().run(timeout=30)
+    assert [s.id for s in ws.load_plan().sections] == ["s01", "s02"]
+    assert ws.load_plan().sections[1].headline == "직접 고친 제목"

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800;900&family=Noto+Serif+KR:wght@500;700;900&display=block" rel="stylesheet">
+<style>
+:root {
+  --primary: {{ theme.primary }};
+  --accent: {{ theme.accent }};
+  --bg: {{ theme.background }};
+  --surface: {{ theme.surface }};
+  --text: {{ theme.text }};
+  --muted: {{ theme.muted }};
+  --on-primary: {{ on_primary }};
+  --radius: {{ theme.radius }}px;
+  --sans: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --heading: {% if theme.font == "serif" %}"Noto Serif KR", "AppleMyungjo", serif{% else %}var(--sans){% endif %};
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: {{ width }}px; background: var(--bg); }
+body { font-family: var(--sans); color: var(--text); -webkit-font-smoothing: antialiased; word-break: keep-all; }
+
+.sec { padding: 110px 64px; background: var(--bg); }
+.sec.alt { background: var(--surface); }
+.inner { display: flex; flex-direction: column; gap: 28px; }
+.center { text-align: center; align-items: center; }
+
+.eyebrow { font-size: 21px; font-weight: 700; color: var(--primary); letter-spacing: 0.08em; }
+.pill { display: inline-block; padding: 9px 22px; border-radius: 999px; background: var(--primary); color: var(--on-primary); font-size: 18px; letter-spacing: 0.04em; }
+.headline { font-family: var(--heading); font-size: 50px; line-height: 1.32; font-weight: 800; letter-spacing: -0.02em; }
+.body { font-size: 26px; line-height: 1.7; color: var(--muted); }
+
+.figure { width: 100%; border-radius: var(--radius); overflow: hidden; margin-top: 12px; background: #F1F2F4; }
+.figure img { display: block; width: 100%; height: auto; }
+.placeholder { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px;
+  border: 3px dashed #C9CDD2; color: #8A9099; font-size: 22px; font-weight: 700; text-align: center; padding: 40px; }
+.placeholder small { font-size: 16px; font-weight: 400; max-width: 80%; }
+
+/* 첫 화면 */
+.sec-hero { padding-top: 120px; background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%); }
+.sec-hero .headline { font-size: 60px; line-height: 1.26; }
+.sec-hero .body { font-size: 27px; }
+
+/* 고민 공감 */
+.cards { display: flex; flex-direction: column; gap: 18px; width: 100%; text-align: left; }
+.card { display: flex; gap: 26px; align-items: flex-start; background: #FFFFFF; border: 1px solid rgba(0,0,0,0.07);
+  border-radius: var(--radius); padding: 34px 36px; box-shadow: 0 8px 24px rgba(0,0,0,0.04); }
+.card .num { flex: none; font-size: 30px; font-weight: 900; color: var(--primary); line-height: 1.2; min-width: 44px; }
+.card .t { font-size: 28px; font-weight: 700; line-height: 1.45; }
+.card .d { font-size: 23px; color: var(--muted); line-height: 1.65; margin-top: 6px; }
+
+/* 특징 */
+.checks { list-style: none; display: flex; flex-direction: column; gap: 16px; width: 100%; text-align: left; }
+.checks li { display: flex; gap: 16px; align-items: flex-start; font-size: 24px; line-height: 1.6; }
+.checks li::before { content: "✓"; flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--primary);
+  color: var(--on-primary); font-size: 19px; font-weight: 900; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+.checks b { font-weight: 700; }
+
+/* 신뢰 */
+.badges { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; width: 100%; }
+.badge { background: var(--surface); border-radius: var(--radius); padding: 30px 28px; text-align: left; border: 1px solid rgba(0,0,0,0.05); }
+.badge .t { font-size: 20px; color: var(--muted); font-weight: 500; }
+.badge .d { font-size: 26px; font-weight: 800; margin-top: 8px; line-height: 1.4; color: var(--accent); }
+
+/* 사용법 */
+.steps { display: flex; flex-direction: column; gap: 22px; width: 100%; text-align: left; }
+.step { display: flex; gap: 26px; align-items: center; background: #FFFFFF; border-radius: var(--radius); padding: 28px 32px; }
+.step .n { flex: none; width: 62px; height: 62px; border-radius: 50%; background: var(--primary); color: var(--on-primary);
+  font-size: 26px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+.step .t { font-size: 19px; font-weight: 800; color: var(--primary); letter-spacing: 0.04em; }
+.step .d { font-size: 24px; line-height: 1.55; margin-top: 4px; }
+
+/* 자주 묻는 질문 */
+.faq { width: 100%; text-align: left; border-top: 2px solid var(--text); }
+.qa { padding: 32px 4px; border-bottom: 1px solid #DADDE1; }
+.qa .q, .qa .a { display: flex; gap: 18px; align-items: flex-start; }
+.qa .q { font-size: 26px; font-weight: 700; line-height: 1.5; }
+.qa .a { font-size: 23px; color: var(--muted); line-height: 1.7; margin-top: 14px; }
+.qa .mark { flex: none; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 19px; font-weight: 900; }
+.qa .q .mark { background: var(--primary); color: var(--on-primary); }
+.qa .a .mark { background: #E9EBEE; color: var(--muted); }
+
+/* 제품 정보 */
+.spec { width: 100%; border-collapse: collapse; text-align: left; border-top: 2px solid var(--text); font-size: 22px; }
+.spec th, .spec td { padding: 22px 24px; border-bottom: 1px solid #DADDE1; vertical-align: top; line-height: 1.55; }
+.spec th { width: 32%; background: rgba(0,0,0,0.025); color: var(--muted); font-weight: 500; }
+
+/* 주의사항 */
+.caution { width: 100%; text-align: left; border: 2px solid var(--text); border-radius: var(--radius); padding: 40px 42px; }
+.caution ul { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+.caution li { display: flex; gap: 14px; font-size: 22px; line-height: 1.6; }
+.caution li::before { content: "!"; flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--text); color: #FFF;
+  font-size: 16px; font-weight: 900; display: flex; align-items: center; justify-content: center; margin-top: 3px; }
+
+/* 마무리 */
+.sec-cta { background: var(--primary); color: var(--on-primary); }
+.sec-cta .eyebrow, .sec-cta .body { color: var(--on-primary); opacity: 0.85; }
+.sec-cta .lines { display: flex; flex-direction: column; gap: 12px; font-size: 24px; line-height: 1.6; }
+.sec-cta .lines b { font-weight: 800; }
+
+.notice { padding: 40px 64px 56px; background: var(--bg); color: #8A9099; font-size: 18px; line-height: 1.8; border-top: 1px solid #E5E7EA; }
+</style>
+</head>
+<body>
+{% for s in sections %}
+<section class="sec sec-{{ s.type }}{% if s.alt %} alt{% endif %}" id="{{ s.id }}">
+  <div class="inner center">
+    {% if s.type == "hero" and s.eyebrow %}<span class="eyebrow pill">{{ s.eyebrow }}</span>
+    {% elif s.eyebrow %}<p class="eyebrow">{{ s.eyebrow }}</p>{% endif %}
+    {% if s.headline %}<h2 class="headline">{{ s.headline | br }}</h2>{% endif %}
+    {% if s.body %}<p class="body">{{ s.body | br }}</p>{% endif %}
+
+    {% if s.type == "problem" and s.entries %}
+    <div class="cards">
+      {% for it in s.entries %}<div class="card"><div class="num">{{ "%02d" % loop.index }}</div>
+        <div>{% if it.title %}<div class="t">{{ it.title | br }}</div>{% endif %}{% if it.text %}<div class="d">{{ it.text | br }}</div>{% endif %}</div></div>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if s.image_src %}<div class="figure"><img src="{{ s.image_src }}" alt=""></div>
+    {% elif s.placeholder %}<div class="figure placeholder" style="aspect-ratio: {{ s.placeholder.ratio }}">AI 이미지 생성 전<small>{{ s.placeholder.prompt }}</small></div>{% endif %}
+
+    {% if s.type in ("feature", "solution", "hero") and s.entries %}
+    <ul class="checks">{% for it in s.entries %}<li><span>{% if it.title %}<b>{{ it.title }}</b> {% endif %}{{ it.text | br }}</span></li>{% endfor %}</ul>
+    {% elif s.type == "trust" and s.entries %}
+    <div class="badges">{% for it in s.entries %}<div class="badge"><div class="t">{{ it.title }}</div><div class="d">{{ it.text | br }}</div></div>{% endfor %}</div>
+    {% elif s.type == "usage" and s.entries %}
+    <div class="steps">{% for it in s.entries %}<div class="step"><div class="n">{{ loop.index }}</div>
+      <div>{% if it.title %}<div class="t">{{ it.title }}</div>{% endif %}<div class="d">{{ it.text | br }}</div></div></div>{% endfor %}</div>
+    {% elif s.type == "faq" and s.entries %}
+    <div class="faq">{% for it in s.entries %}<div class="qa"><div class="q"><span class="mark">Q</span><span>{{ it.title | br }}</span></div>
+      <div class="a"><span class="mark">A</span><span>{{ it.text | br }}</span></div></div>{% endfor %}</div>
+    {% elif s.type == "spec" and s.entries %}
+    <table class="spec">{% for it in s.entries %}<tr><th>{{ it.title }}</th><td>{{ it.text | br }}</td></tr>{% endfor %}</table>
+    {% elif s.type == "caution" and s.entries %}
+    <div class="caution"><ul>{% for it in s.entries %}<li><span>{% if it.title %}<b>{{ it.title }}</b> {% endif %}{{ it.text | br }}</span></li>{% endfor %}</ul></div>
+    {% elif s.type == "cta" and s.entries %}
+    <div class="lines">{% for it in s.entries %}<p>{% if it.title %}<b>{{ it.title }}</b> {% endif %}{{ it.text | br }}</p>{% endfor %}</div>
+    {% endif %}
+  </div>
+</section>
+{% endfor %}
+{% if notice %}<section class="sec-notice notice" id="notice">{% for line in notice %}<p>{{ line }}</p>{% endfor %}</section>{% endif %}
+</body>
+</html>

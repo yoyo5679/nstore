@@ -9,3 +9,6 @@ output/*
 !data/.gitkeep
 !output/.gitkeep
 .DS_Store
+
+# 상품별 사진·자료·생성 결과 (용량이 크고 저장소에 올리지 않음)
+products/

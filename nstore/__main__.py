@@ -27,7 +27,16 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("export", help="스마트스토어 일괄등록 엑셀 → output/smartstore_upload.xlsx")
     p.add_argument("--template", type=Path, help="스마트스토어센터에서 받은 일괄등록 양식")
 
+    p = sub.add_parser("detail", help="상세페이지: products/<상품코드>/ 의 사진·자료로 만들기")
+    p.add_argument("step", choices=DETAIL_STEPS, help="facts→plan→images→thumbnail→export, all=전부, check=문구 검사, models=Gemini 모델 목록")
+    p.add_argument("codes", nargs="*", help="상품코드 (여러 개 가능)")
+    p.add_argument("--all", action="store_true", help="products/ 에 사진·자료가 있는 상품 전체")
+    p.add_argument("--platform", nargs="+", choices=["smartstore", "coupang", "toss"], help="내보낼 플랫폼 (기본: 전부)")
+    p.add_argument("--format", nargs="+", choices=["jpg", "png", "webp"], default=["jpg"], help="이미지 형식 (기본: jpg)")
+
     args = parser.parse_args(argv)
+    if args.command == "detail":
+        return run_detail(args)
     try:
         if args.command == "import":
             notes = pipeline.run_import(args.file, args.force)
@@ -42,6 +51,58 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print("\n".join(notes))
     return 0
+
+
+DETAIL_STEPS = ["facts", "plan", "images", "thumbnail", "export", "all", "check", "models"]
+
+
+def run_detail(args) -> int:
+    """여러 상품을 차례로 처리합니다. 한 상품이 실패해도 나머지는 계속합니다."""
+    from .detail import service
+    from .detail.gemini import GeminiClient, GeminiError
+
+    try:
+        needs_ai = args.step not in ("export", "check")
+        client = GeminiClient.from_env() if needs_ai else None
+        if args.step == "models":
+            print("\n".join(client.list_models()))
+            return 0
+    except (ConfigError, GeminiError) as e:
+        print(f"[중단] {e}", file=sys.stderr)
+        return 1
+
+    codes = args.codes or (service.codes_with_material() if args.all else [])
+    if not codes:
+        print("[중단] 상품코드를 적거나 --all 을 붙이세요.", file=sys.stderr)
+        return 1
+
+    steps = ["facts", "plan", "images", "thumbnail", "export"] if args.step == "all" else [args.step]
+    failed = []
+    for code in codes:
+        try:
+            for step in steps:
+                if step == "facts":
+                    print(code, service.run_facts(code, client), flush=True)
+                elif step == "plan":
+                    print(code, service.run_plan(code, client), flush=True)
+                elif step == "images":
+                    print(code, service.run_images(code, client), flush=True)
+                elif step == "thumbnail":
+                    print(code, service.run_thumbnail(code, client), flush=True)
+                elif step == "export":
+                    for note in service.run_export(code, args.platform, args.format):
+                        print(code, note, flush=True)
+                elif step == "check":
+                    findings = service.run_check(code)
+                    print(code, "문구 검사 통과" if not findings else "")
+                    for f in findings:
+                        print("   ", f)
+        except (ConfigError, GeminiError, ValueError, FileNotFoundError) as e:
+            failed.append(code)
+            print(f"{code} [실패] {e}", file=sys.stderr, flush=True)
+    if failed:
+        print(f"실패 {len(failed)}개: {', '.join(failed)}", file=sys.stderr)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
