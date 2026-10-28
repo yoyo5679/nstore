@@ -50,7 +50,7 @@ def extract_facts(ws: Workspace, client: Writer, product: dict) -> Facts:
     files = ws.docs() + ws.photos()[:6]
     if not files:
         raise ValueError(f"{ws.dir} 에 사진(photos/)이나 자료(docs/)가 없습니다.")
-    prompt = f"""첨부한 카탈로그·사용설명서·제품 사진만 근거로 이 제품의 사실을 정리하세요.
+    prompt = f"""첨부한 카탈로그·사용설명서·제품 사진·제품 설명 링크 캡처만 근거로 이 제품의 사실을 정리하세요.
 
 - 자료에 없는 내용은 절대 만들지 마세요. 확인하지 못한 중요한 정보(무게, 최대 하중, 재질 등)는 unknowns 에 적으세요.
 - 각 목록에는 자료에 실제로 적힌 항목만 넣으세요. 해당 내용이 없으면 빈 목록으로 두세요.
@@ -60,6 +60,8 @@ def extract_facts(ws: Workspace, client: Writer, product: dict) -> Facts:
 - features[].source 에만 근거(파일 이름과 페이지)를 적으세요.
 - certifications 에는 의료기기 허가·신고 번호, 인증, 복지용구 제품코드 등 자료에 적힌 것만 적으세요.
 - 효능·효과는 자료의 표현을 바꾸거나 부풀리지 마세요.
+- link-로 시작하는 파일은 제품 설명 웹페이지를 캡처한 것입니다(글자는 .txt, 화면은 .png 조각). 광고 문구보다
+  규격·구성·사용법·주의사항 같은 사실을 뽑고, 메뉴·배송·쿠폰·다른 상품 같은 페이지 주변 내용은 무시하세요.
 
 참고 정보: {json.dumps(product, ensure_ascii=False)}"""
     facts = client.json(prompt, Facts, files=files, system=SYSTEM)
@@ -100,6 +102,21 @@ def _medical_rule(product: dict, approved: str) -> str:
 이 제품은 의료기기라 상세페이지를 게시하기 전에 광고 자율심의를 받아야 합니다. 심의 신청용 초안으로, 자료 문장을 최대한 그대로 옮기고 해석·평가하는 표현을 넣지 마세요."""
 
 
+def _reference_rule(ws: Workspace) -> str:
+    guide = ws.load_reference()
+    if guide is None:
+        return ""
+    flow = " → ".join(guide.section_flow) or "기본 흐름"
+    notes = "; ".join(guide.notes)
+    return f"""
+[레퍼런스 스타일을 따라 하세요]
+- 섹션 흐름: {flow} (우리 자료에 없는 내용의 섹션은 빼세요)
+- 말투: {guide.copy_tone}
+- 사진 분위기: {guide.photo_style} (image.prompt 의 장면에 반영)
+- 그 밖에: {notes}
+레퍼런스는 스타일만 따릅니다. 레퍼런스의 문장·표현·주장을 그대로 가져오지 말고, 우리 사실 자료로 새로 쓰세요."""
+
+
 def make_plan(ws: Workspace, client: Writer, product: dict, keywords: dict, max_generate: int) -> Plan:
     facts = ws.load_facts()
     if facts is None:
@@ -121,6 +138,7 @@ def make_plan(ws: Workspace, client: Writer, product: dict, keywords: dict, max_
 사실 자료(facts): {_dump(facts)}
 리뷰 분석: {_dump(reviews)}
 {_medical_rule(product, ws.approved_copy())}
+{_reference_rule(ws)}
 
 concept 에는 이 페이지의 핵심 메시지를 한 문장으로 적으세요.
 각 섹션의 id 는 s01, s02 … 순서대로 붙이세요."""
@@ -168,7 +186,8 @@ def edit_page(ws: Workspace, client: Writer, plan: Plan, instruction: str, produ
 현재 페이지: {plan.model_dump_json(indent=1)}
 사실 자료: {_dump(ws.load_facts())}
 실사진 목록: {[p.name for p in ws.photos()]}
-{_medical_rule(product, ws.approved_copy())}"""
+{_medical_rule(product, ws.approved_copy())}
+{_reference_rule(ws)}"""
     updated = normalize_plan(client.json(prompt, Plan, system=SYSTEM), [p.name for p in ws.photos()], max_generate)
     ws.save_plan(updated, f"전체 수정: {instruction[:40]}")
     return updated

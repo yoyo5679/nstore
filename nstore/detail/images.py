@@ -67,6 +67,12 @@ def write_prompt(
                      f"다음 요청만 반영하고 나머지는 그대로 두라고 쓰세요: {instruction}")
     elif instruction:
         lines.append(f"추가 요청: {instruction}")
+    theme = ws.load_theme()
+    if section and section.type == "hero" and theme and theme.hero == "overlay":
+        lines.append("이 사진 위쪽에 큰 제목 글자를 얹습니다. 위쪽 40%는 벽·하늘처럼 단순한 배경으로 비워두고 제품과 인물은 아래쪽에 두는 구도로.")
+    guide = ws.load_reference()
+    if guide and kind != "cutout":
+        lines.append(f"사진 분위기는 레퍼런스처럼: {guide.photo_style}")
     facts = ws.load_facts()
     if facts:
         lines.append(f"제품: {facts.product_name} — {facts.one_line}")

@@ -98,6 +98,8 @@ class ClaudeClient:
             else:
                 source = {"type": "base64", "media_type": "application/pdf", "data": _b64(data)}
             return [{"type": "document", "source": source, "title": path.name}]
+        if path.suffix.lower() in (".txt", ".md"):
+            return [{"type": "text", "text": f"[자료: {path.name}]\n{path.read_text(encoding='utf-8')}"}]
         return [{"type": "text", "text": f"[사진: {path.name}]"}, *image_blocks(path)]
 
     def json(self, prompt: str, schema: type[T], files: Sequence[Path] = (), system: str | None = None) -> T:

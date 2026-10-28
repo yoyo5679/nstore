@@ -20,6 +20,8 @@ SMARTSTORE_OUTPUT_PATH = OUTPUT_DIR / "smartstore_upload.xlsx"
 PRODUCTS_DIR = ROOT / "products"
 DETAIL_OUTPUT_DIR = OUTPUT_DIR / "detail"
 THEME_PATH = DATA_DIR / "theme.json"
+REFERENCE_PATH = DATA_DIR / "reference.json"
+REFERENCE_DIR = DATA_DIR / "refs"
 
 load_dotenv(ROOT / ".env")
 

@@ -102,10 +102,38 @@ body { font-family: var(--sans); color: var(--text); -webkit-font-smoothing: ant
 .sec-cta .lines b { font-weight: 800; }
 
 .notice { padding: 40px 64px 56px; background: var(--bg); color: #8A9099; font-size: 18px; line-height: 1.8; border-top: 1px solid #E5E7EA; }
+
+/* 배치 선택 (디자인 탭·레퍼런스) */
+.align-left .inner.center { text-align: left; align-items: flex-start; }
+.align-left .sec-cta .inner.center, .align-left .sec-spec .inner.center { text-align: left; }
+.img-full .figure { width: calc(100% + 128px); margin-left: -64px; margin-right: -64px; border-radius: 0; }
+.bg-plain .sec.alt { background: var(--bg); }
+.bg-plain .sec:not(.sec-hero):not(.sec-cta) { border-top: 1px solid rgba(0,0,0,0.06); }
+.bg-plain .step { background: var(--surface); }
+
+/* 첫 화면: 사진 위에 글 */
+.sec-hero-overlay { position: relative; background: #111; }
+.sec-hero-overlay img { display: block; width: 100%; height: auto; min-height: 960px; object-fit: cover; }
+.sec-hero-overlay .overlay-text { position: absolute; inset: 0; padding: 120px 64px; display: flex; flex-direction: column;
+  gap: 26px; align-items: center; text-align: center; color: #FFFFFF;
+  background: linear-gradient(180deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.22) 42%, rgba(0,0,0,0) 68%); }
+.align-left .sec-hero-overlay .overlay-text { align-items: flex-start; text-align: left; }
+.sec-hero-overlay .headline { font-size: 62px; line-height: 1.26; color: #FFFFFF; text-shadow: 0 2px 14px rgba(0,0,0,0.25); }
+.sec-hero-overlay .body { font-size: 27px; color: rgba(255,255,255,0.92); }
 </style>
 </head>
-<body>
+<body class="align-{{ theme.align }} img-{{ theme.image_style }} bg-{{ theme.sections }}">
 {% for s in sections %}
+{% if s.type == "hero" and theme.hero == "overlay" and s.image_src %}
+<section class="sec-hero-overlay" id="{{ s.id }}">
+  <img src="{{ s.image_src }}" alt="">
+  <div class="overlay-text">
+    {% if s.eyebrow %}<span class="eyebrow pill">{{ s.eyebrow }}</span>{% endif %}
+    {% if s.headline %}<h2 class="headline">{{ s.headline | br }}</h2>{% endif %}
+    {% if s.body %}<p class="body">{{ s.body | br }}</p>{% endif %}
+  </div>
+</section>
+{% else %}
 <section class="sec sec-{{ s.type }}{% if s.alt %} alt{% endif %}" id="{{ s.id }}">
   <div class="inner center">
     {% if s.type == "hero" and s.eyebrow %}<span class="eyebrow pill">{{ s.eyebrow }}</span>
@@ -142,6 +170,7 @@ body { font-family: var(--sans); color: var(--text); -webkit-font-smoothing: ant
     {% endif %}
   </div>
 </section>
+{% endif %}
 {% endfor %}
 {% if notice %}<section class="sec-notice notice" id="notice">{% for line in notice %}<p>{{ line }}</p>{% endfor %}</section>{% endif %}
 </body>

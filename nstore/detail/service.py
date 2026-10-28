@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from .. import config
 from ..master import load_master
-from . import images, planner, render
+from . import capture, images, planner, render
+from . import theme as theme_mod
 from .claude import Writer
 from .compliance import Finding, check_plan
 from .gemini import GeminiClient
-from .schema import Plan
+from .schema import Plan, ReferenceGuide, Theme
 from .workspace import Workspace
 
 # Claude에게 넘길 상품 정보 (긴 상세설명 원문은 빼고)
@@ -56,6 +59,29 @@ def keywords_for(product: dict) -> dict:
 
 def max_generate() -> int:
     return settings()["gemini"]["max_generated_images"]
+
+
+def run_links(code: str) -> list[str]:
+    """links.txt 의 제품 설명 링크를 캡처해 docs/ 에 넣습니다."""
+    ws = Workspace(code)
+    urls = capture.read_links(ws.links_path())
+    if not urls:
+        return ["제품 설명 링크가 없습니다 (links.txt)."]
+    for old in ws.captured_links():
+        old.unlink()
+    _, notes = capture.capture(urls, ws.docs_dir, "link")
+    return notes
+
+
+def run_reference(writer: Writer, files: list[Path], urls: list[str], target_dir: Path) -> tuple[Theme, ReferenceGuide]:
+    """레퍼런스 캡처 이미지·링크 → (테마, 기획 방식). 링크는 캡처해서 함께 분석합니다."""
+    files = list(files)
+    if urls:
+        shots, _ = capture.capture(urls, target_dir, "ref", max_slices=12)  # 분위기 파악엔 앞부분이면 충분
+        files += [p for p in shots if p.suffix == ".png"]
+    if not files:
+        raise ValueError("레퍼런스 캡처 이미지나 링크를 넣어주세요.")
+    return theme_mod.analyze_reference(writer, files)
 
 
 def run_facts(code: str, writer: Writer) -> str:

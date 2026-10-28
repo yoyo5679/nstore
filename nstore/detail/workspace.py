@@ -2,10 +2,12 @@
 
 products/<상품코드>/
   photos/             여러 각도 실사진 (jpg, png, webp)
-  docs/               카탈로그·사용설명서 (pdf 또는 이미지)
+  docs/               카탈로그·사용설명서 (pdf 또는 이미지), 링크 캡처(link-NN*)
+  links.txt           (선택) 제품 설명 링크, 한 줄에 하나 — 캡처해서 docs/ 에 넣음
   reviews.txt         (선택) 고객 리뷰를 붙여넣은 텍스트 — 소구점 분석용
   approved_copy.txt   (의료기기) 광고 자율심의를 받은 문구
   theme.json          (선택) 이 상품만 다른 디자인을 쓸 때
+  reference.json      (선택) 이 상품만 다른 레퍼런스(섹션 흐름·말투·사진 분위기)를 쓸 때
   work/
     facts.json        자료에서 뽑은 사실
     reviews.json      리뷰 분석 결과
@@ -25,10 +27,10 @@ import unicodedata
 from pathlib import Path
 
 from .. import config
-from .schema import Facts, Plan, ReviewInsights, Theme
+from .schema import Facts, Plan, ReferenceGuide, ReviewInsights, Theme
 
 PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
-DOC_EXTS = {".pdf", ".jpg", ".jpeg", ".png", ".webp"}
+DOC_EXTS = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".txt", ".md"}
 _UNSAFE = re.compile(r"[^\w.-]+")
 
 
@@ -123,6 +125,19 @@ class Workspace:
             if path.exists():
                 return Theme.model_validate_json(path.read_text(encoding="utf-8"))
         return None
+
+    def load_reference(self) -> ReferenceGuide | None:
+        """이 상품의 레퍼런스, 없으면 모든 상품 공통 레퍼런스."""
+        for path in (self.dir / "reference.json", config.REFERENCE_PATH):
+            if path.exists():
+                return ReferenceGuide.model_validate_json(path.read_text(encoding="utf-8"))
+        return None
+
+    def links_path(self) -> Path:
+        return self.dir / "links.txt"
+
+    def captured_links(self) -> list[Path]:
+        return sorted(self.docs_dir.glob("link-*")) if self.docs_dir.exists() else []
 
     # ------------------------------------------------------------ 버전 관리 (되돌리기)
 

@@ -17,12 +17,15 @@ from nstore.config import ConfigError
 from nstore.detail import images, planner, render, service
 from nstore.detail import theme as theme_mod
 from nstore.detail.compliance import LEVEL_ERROR, is_medical
+from nstore.detail.capture import CaptureError, read_links
 from nstore.detail.claude import ClaudeError, Writer, make_writer
 from nstore.detail.gemini import GeminiClient, GeminiError
-from nstore.detail.schema import IMAGE_KINDS, IMAGE_MODES, SECTION_LABELS, SECTION_TYPES, Facts, ImageSpec, Item, Plan, Section
+from nstore.detail.schema import (
+    IMAGE_KINDS, IMAGE_MODES, LAYOUT_OPTIONS, SECTION_LABELS, SECTION_TYPES, Facts, ImageSpec, Item, Plan, Section,
+)
 from nstore.detail.workspace import Workspace
 
-ERRORS = (ConfigError, ClaudeError, GeminiError, ValueError, FileNotFoundError)
+ERRORS = (ConfigError, ClaudeError, GeminiError, CaptureError, ValueError, FileNotFoundError)
 MODE_LABELS = {"photo": "실사진 그대로", "generate": "AI로 만들기", "none": "이미지 없음"}
 KIND_LABELS = {"scene": "사용 장면", "detail": "디테일 컷", "cutout": "흰 배경 제품컷", "extend": "실사진 배경 확장"}
 
@@ -148,7 +151,7 @@ with left:
 
     # ------------------------------------------------------------ ① 자료
     with tab_src:
-        st.caption("여러 각도 사진, 카탈로그, 사용설명서를 올리면 AI가 사실만 뽑아 정리합니다. 카피는 이 정리본에 있는 내용만 씁니다.")
+        st.caption("여러 각도 사진, 카탈로그, 사용설명서, 제품 설명 링크를 넣으면 Claude가 사실만 뽑아 정리합니다. 카피는 이 정리본에 있는 내용만 씁니다.")
         up_photos = st.file_uploader("제품 사진 (여러 장)", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True, key=f"{code}:up-photos")
         up_docs = st.file_uploader("카탈로그·사용설명서 (PDF 또는 이미지)", type=["pdf", "jpg", "jpeg", "png", "webp"], accept_multiple_files=True, key=f"{code}:up-docs")
         if (up_photos or up_docs) and st.button("올린 파일 저장"):
@@ -162,7 +165,23 @@ with left:
         photos = ws.photos()
         if photos:
             st.image([str(p) for p in photos], width=100, caption=[p.name for p in photos])
-        st.caption("자료: " + (", ".join(d.name for d in ws.docs()) or "없음"))
+        st.caption("자료: " + (", ".join(d.name for d in ws.docs() if not d.name.startswith("link-")) or "없음"))
+
+        links_text = st.text_area(
+            "제품 설명 링크 (한 줄에 하나) — 제조사·자사몰 상품 페이지 등. 페이지를 끝까지 캡처해 자료로 씁니다.",
+            "\n".join(read_links(ws.links_path())), height=80, key=f"{code}:links",
+        )
+        if st.button("링크 가져오기", disabled=not links_text.strip()):
+            ws.save_text("links.txt", links_text)
+            notes = run("링크를 열어 캡처하는 중…", lambda: service.run_links(code))
+            for note in notes or []:
+                flash(note, "info")
+            if notes:
+                refresh(code)
+        link_shots = [p for p in ws.captured_links() if p.suffix == ".png"]
+        if link_shots:
+            st.caption(f"링크 캡처 {len(link_shots)}장 — 자료 정리 때 함께 읽습니다.")
+            st.image([str(p) for p in link_shots[:8]], width=70)
 
         reviews = st.text_area("고객 리뷰 붙여넣기 (선택) — 고객이 좋아한 점·망설인 점을 뽑아 카피와 FAQ에 씁니다",
                                ws.reviews_text(), height=110, key=f"{code}:reviews")
@@ -358,29 +377,57 @@ with left:
     with tab_design:
         current = ws.load_theme() or theme_mod.DEFAULT_THEME
         scope = st.radio("적용 범위", ["모든 상품", "이 상품만"], horizontal=True, key=f"{code}:scope")
-        target = config.THEME_PATH if scope == "모든 상품" else ws.dir / "theme.json"
+        everyone = scope == "모든 상품"
+        theme_target = config.THEME_PATH if everyone else ws.dir / "theme.json"
+        guide_target = config.REFERENCE_PATH if everyone else ws.dir / "reference.json"
+        refs_dir = config.REFERENCE_DIR if everyone else ws.work_dir / "refs"
 
-        st.markdown("**브랜드 메인 색 하나로 전체 색 맞추기**")
+        st.markdown("**마음에 드는 상세페이지를 레퍼런스로**")
+        st.caption("캡처 이미지나 링크를 넣으면 Claude가 색·글꼴·배치와 섹션 흐름·말투·사진 분위기를 분석해 비슷한 느낌으로 만듭니다. "
+                   "레퍼런스의 문장·사진은 가져오지 않고 스타일만 따릅니다.")
+        refs = st.file_uploader("레퍼런스 캡처 이미지", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True, key=f"{code}:refs")
+        ref_links = st.text_area("레퍼런스 링크 (한 줄에 하나)", height=70, key=f"{code}:ref-links")
+        ref_urls = [u.strip() for u in ref_links.splitlines() if u.strip().startswith(("http://", "https://"))]
+        if st.button("레퍼런스 분석해서 적용 (Claude)", type="primary", disabled=not (refs or ref_urls)):
+            saved = [ws.add_file(refs_dir, f.name, f.getvalue()) for f in refs or []]
+            result = run("레퍼런스를 분석하는 중…", lambda: service.run_reference(claude(), saved, ref_urls, refs_dir))
+            if result:
+                new_theme, guide = result
+                theme_mod.save(new_theme, theme_target)
+                theme_mod.save_reference(guide, guide_target)
+                flash(f"레퍼런스를 반영했습니다 ({scope}): {new_theme.mood}. 구성·카피를 새로 만들면 섹션 흐름과 말투도 따라갑니다.")
+                refresh(code)
+
+        guide = ws.load_reference()
+        if guide:
+            with st.container(border=True):
+                st.markdown("**따라 하는 레퍼런스 기획 방식**")
+                st.write(f"섹션 흐름: {' → '.join(SECTION_LABELS.get(t, t) for t in guide.section_flow) or '-'}")
+                st.write(f"말투: {guide.copy_tone}")
+                st.write(f"사진 분위기: {guide.photo_style}")
+                for note in guide.notes:
+                    st.write(f"- {note}")
+                if st.button("레퍼런스 기획 방식 지우기", key=f"{code}:ref-clear"):
+                    theme_mod.save_reference(None, guide_target)
+                    flash("레퍼런스 기획 방식을 지웠습니다. (색·배치는 그대로)")
+                    refresh(code)
+
+        st.markdown("**직접 조정**")
         c1, c2, c3 = st.columns(3)
-        color = c1.color_picker("메인 색", current.primary, key=f"{code}:color")
+        color = c1.color_picker("메인 색 (나머지 색 자동)", current.primary, key=f"{code}:color")
         fonts = list(theme_mod.FONTS)
         font = c2.selectbox("제목 글꼴", fonts, index=fonts.index(current.font), format_func=theme_mod.FONTS.get, key=f"{code}:font")
         radius = c3.slider("모서리 둥글기", 0, 40, current.radius, key=f"{code}:radius")
-        if st.button("이 색으로 적용", type="primary"):
+        layout = {}
+        for col, (key, label) in zip(st.columns(4), (("align", "정렬"), ("hero", "첫 화면"), ("image_style", "사진"), ("sections", "배경"))):
+            options = list(LAYOUT_OPTIONS[key])
+            layout[key] = col.selectbox(label, options, index=options.index(getattr(current, key)),
+                                        format_func=LAYOUT_OPTIONS[key].get, key=f"{code}:{key}")
+        if st.button("적용"):
             ws.ensure()
-            theme_mod.save(theme_mod.from_brand_color(color, font, radius), target)
+            theme_mod.save(theme_mod.from_brand_color(color, font, radius, layout), theme_target)
             flash(f"디자인을 적용했습니다 ({scope}).")
             refresh(code)
-
-        st.markdown("**마음에 드는 상세페이지 분위기 가져오기**")
-        refs = st.file_uploader("레퍼런스 페이지 캡처 (1~3장)", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True, key=f"{code}:refs")
-        if refs and st.button("레퍼런스 반영 (AI)"):
-            saved = [ws.add_file(ws.work_dir / "refs", f.name, f.getvalue()) for f in refs[:3]]
-            theme = run("레퍼런스를 분석하는 중…", lambda: theme_mod.from_reference(claude(), saved))
-            if theme:
-                theme_mod.save(theme, target)
-                flash(f"레퍼런스 분위기를 반영했습니다: {theme.mood}")
-                refresh(code)
 
         swatches = "".join(
             f'<div style="text-align:center;font-size:12px"><div style="width:56px;height:56px;border-radius:12px;'

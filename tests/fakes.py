@@ -6,7 +6,7 @@ import io
 
 from PIL import Image
 
-from nstore.detail.schema import Facts, ImagePrompt, Plan, ReviewInsights, Section, Theme
+from nstore.detail.schema import Facts, ImagePrompt, Plan, ReferenceAnalysis, ReviewInsights, Section
 from nstore.naver import KeywordStat, ShopItem, ShopResult
 
 SILVER = ("생활/건강", "실버용품", "보행보조용품")
@@ -106,9 +106,12 @@ class FakeClaude:
             return Plan.model_validate(self.plan)
         if schema is Section:
             return Section.model_validate(section("바뀐id", "hero", headline="고친 헤드라인"))
-        if schema is Theme:
-            return Theme(primary="#123456", accent="xx", background="#FFFFFF", surface="#F0F0F0",
-                         text="#111111", muted="#666666", font="handwriting", radius=99, mood="차분함")
+        if schema is ReferenceAnalysis:
+            return ReferenceAnalysis(
+                primary="#123456", accent="xx", background="#FFFFFF", surface="#F0F0F0", text="#111111",
+                muted="#666666", font="serif", radius=99, mood="차분함", align="left", hero="overlay",
+                image_style="full", sections="plain", section_flow=["hero", "problem", "cta"],
+                copy_tone="짧은 존댓말, 질문형 헤드라인", photo_style="자연광 거실, 따뜻한 색감", notes=["숫자 강조"])
         raise AssertionError(schema)
 
 

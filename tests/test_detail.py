@@ -158,8 +158,7 @@ def test_theme_from_brand_color_and_sanitize():
     t = theme.from_brand_color("#2f6b5e", "serif", 12)
     assert t.primary == "#2F6B5E" and t.font == "serif" and t.surface.startswith("#")
     assert theme.on_color("#2F6B5E") == "#FFFFFF" and theme.on_color("#FFE14D") == "#17191C"
-    fixed = theme.from_reference(FakeClaude(), [])
-    assert fixed.accent.startswith("#") and fixed.font == "gothic" and fixed.radius == 40
+    assert theme.from_brand_color("#2f6b5e", layout={"hero": "overlay", "align": "엉뚱"}).hero == "overlay"
     with pytest.raises(ValueError):
         theme.from_brand_color("green")
 
@@ -206,3 +205,83 @@ def test_export_platform_widths(ws):
     pending = Plan.model_validate({"concept": "c", "sections": [section("s01", "hero", "generate")]})
     notes = render.export(ws, pending, None, {}, SETTINGS, ["smartstore"], ["jpg"])
     assert any("s01" in n and "빈 자리" in n for n in notes)
+
+
+def test_reference_analysis_gives_theme_and_guide(ws):
+    t, guide = theme.analyze_reference(FakeClaude(), [])
+    assert t.accent.startswith("#") and t.radius == 40                              # 색 형식·범위는 안전하게
+    assert (t.font, t.align, t.hero, t.sections, t.image_style) == ("serif", "left", "overlay", "plain", "full")
+    assert guide.section_flow == ["hero", "problem", "cta"]
+
+    theme.save_reference(guide)
+    planner.extract_facts(ws, FakeClaude(), {})
+    client = FakeClaude()
+    planner.make_plan(ws, client, {}, {}, 6)
+    prompt = client.json_calls[-1][0]
+    assert "hero → problem → cta" in prompt and "질문형 헤드라인" in prompt and "그대로 가져오지 말고" in prompt
+
+    theme.save(t)
+    writer = FakeClaude()
+    sec = planner.normalize_plan(Plan.model_validate({"concept": "c", "sections": [section("s01", "hero", "generate")]}), ["front.jpg"], 6).sections[0]
+    images.write_prompt(writer, ws, kind="scene", scene="산책", refs=[], ratio="4:5", section=sec)
+    ask = writer.json_calls[0][0]
+    assert "자연광 거실" in ask and "위쪽 40%" in ask                               # 사진 분위기 + 글 얹을 자리
+
+    theme.save_reference(None)
+    assert ws.load_reference() is None
+
+
+def test_layout_variants_render(ws):
+    (ws.images_dir / "s01.png").write_bytes(png_bytes())
+    plan = Plan.model_validate({"concept": "c", "sections": [section("s01", "hero", "generate", headline="큰 제목"), section("s02")]})
+    t = theme.from_brand_color("#1F3A5F", layout={"align": "left", "hero": "overlay", "image_style": "full", "sections": "plain"})
+    html = render.render_html(plan, t, ws, {}, SETTINGS, 860)
+    assert '<body class="align-left img-full bg-plain">' in html
+    assert 'class="sec-hero-overlay"' in html and "큰 제목" in html
+    default = render.render_html(plan, None, ws, {}, SETTINGS, 860)
+    assert '<body class="align-center img-rounded bg-alternate">' in default and 'class="sec-hero-overlay"' not in default
+
+
+def test_link_files_and_facts_prompt(ws):
+    ws.save_text("links.txt", "https://example.com/a\n메모\nhttps://example.com/b\n")
+    from nstore.detail.capture import read_links
+
+    assert read_links(ws.links_path()) == ["https://example.com/a", "https://example.com/b"]
+    (ws.docs_dir / "link-01.txt").write_text("출처: https://example.com/a\n무게 6.8kg", encoding="utf-8")
+    (ws.docs_dir / "link-01-01.png").write_bytes(png_bytes())
+    assert [p.name for p in ws.captured_links()] == ["link-01-01.png", "link-01.txt"]
+    client = FakeClaude()
+    planner.extract_facts(ws, client, {})
+    prompt, _, files = client.json_calls[0]
+    assert "link-로 시작하는 파일은" in prompt
+    assert {"link-01.txt", "link-01-01.png", "catalog.pdf"} <= {f.name for f in files}
+
+
+@pytest.mark.skipif(not _browser_available(), reason="브라우저 없음 (playwright install chromium)")
+def test_capture_local_page(tmp_path):
+    from PIL import Image
+
+    from nstore.detail.capture import capture
+
+    Image.new("RGB", (860, 1800), "#2F6B5E").save(tmp_path / "detail.png")
+    page = tmp_path / "page.html"
+    page.write_text('<html><head><meta name=viewport content="width=device-width"></head><body style="margin:0">'
+                    '<h1>케어메이트</h1><p>무게 6.8kg</p><img src="detail.png" loading="lazy" style="width:100%"></body></html>',
+                    encoding="utf-8")
+    saved, notes = capture([page.as_uri(), "http://127.0.0.1:9/없는페이지"], tmp_path / "out", "link")
+    names = [p.name for p in saved]
+    assert names[0] == "link-01.txt" and "무게 6.8kg" in saved[0].read_text(encoding="utf-8")
+    assert "link-01-01.png" in names and Image.open(saved[1]).width == 860
+    assert "열지 못했습니다" in notes[1]
+
+
+def test_reference_schema_limits_choices():
+    import anthropic
+
+    from nstore.detail.schema import ReferenceAnalysis
+
+    props = anthropic.transform_schema(ReferenceAnalysis)["properties"]
+    assert set(props["hero"]["enum"]) == {"stacked", "overlay"}
+    assert set(props["section_flow"]["items"]["enum"]) >= {"hero", "cta"}
+    bad = theme.sanitize(theme.from_brand_color("#123456").model_copy(update={"align": "엉뚱", "font": "손글씨"}))
+    assert (bad.align, bad.font) == ("center", "gothic")

@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--template", type=Path, help="스마트스토어센터에서 받은 일괄등록 양식")
 
     p = sub.add_parser("detail", help="상세페이지: products/<상품코드>/ 의 사진·자료로 만들기")
-    p.add_argument("step", choices=DETAIL_STEPS, help="facts→plan→images→thumbnail→export, all=전부, check=문구 검사, models=Gemini 이미지 모델 목록")
+    p.add_argument("step", choices=DETAIL_STEPS, help="links→facts→plan→images→thumbnail→export, all=전부, check=문구 검사, models=Gemini 이미지 모델 목록")
     p.add_argument("codes", nargs="*", help="상품코드 (여러 개 가능)")
     p.add_argument("--all", action="store_true", help="products/ 에 사진·자료가 있는 상품 전체")
     p.add_argument("--platform", nargs="+", choices=["smartstore", "coupang", "toss"], help="내보낼 플랫폼 (기본: 전부)")
@@ -54,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-DETAIL_STEPS = ["facts", "plan", "images", "thumbnail", "export", "all", "check", "models"]
+DETAIL_STEPS = ["links", "facts", "plan", "images", "thumbnail", "export", "all", "check", "models"]
 
 
 def run_detail(args) -> int:
@@ -64,6 +64,7 @@ def run_detail(args) -> int:
     Claude 사용 한도에 걸리면 거기서 멈춥니다.
     """
     from .detail import service
+    from .detail.capture import CaptureError
     from .detail.claude import ClaudeError, ClaudeLimitError, make_writer
     from .detail.gemini import GeminiClient, GeminiError
     from .detail.workspace import Workspace
@@ -84,18 +85,22 @@ def run_detail(args) -> int:
         print("[중단] 상품코드를 적거나 --all 을 붙이세요.", file=sys.stderr)
         return 1
 
-    steps = ["facts", "plan", "images", "thumbnail", "export"] if args.step == "all" else [args.step]
+    steps = ["links", "facts", "plan", "images", "thumbnail", "export"] if args.step == "all" else [args.step]
     resume = args.step == "all" and not args.redo
     failed = []
     for n, code in enumerate(codes):
         ws = Workspace(code)
-        done = {"facts": ws.load_facts() is not None, "plan": ws.load_plan() is not None,
+        done = {"links": bool(ws.captured_links()) or not ws.links_path().exists(),
+                "facts": ws.load_facts() is not None, "plan": ws.load_plan() is not None,
                 "thumbnail": (ws.work_dir / "thumbnail.png").exists()}
         try:
             for step in steps:
                 if resume and done.get(step):
                     continue
-                if step == "facts":
+                if step == "links":
+                    for note in service.run_links(code):
+                        print(code, note, flush=True)
+                elif step == "facts":
                     print(code, service.run_facts(code, writer), flush=True)
                 elif step == "plan":
                     print(code, service.run_plan(code, writer), flush=True)
@@ -115,7 +120,7 @@ def run_detail(args) -> int:
             print(f"{code} [멈춤] {e}", file=sys.stderr, flush=True)
             print(f"남은 상품 {len(codes) - n}개 — 한도가 풀리면 같은 명령을 다시 실행하세요.", file=sys.stderr)
             return 1
-        except (ConfigError, ClaudeError, GeminiError, ValueError, FileNotFoundError) as e:
+        except (ConfigError, ClaudeError, GeminiError, CaptureError, ValueError, FileNotFoundError) as e:
             failed.append(code)
             print(f"{code} [실패] {e}", file=sys.stderr, flush=True)
     if failed:

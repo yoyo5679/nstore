@@ -89,3 +89,10 @@ def test_long_capture_is_sliced(tmp_path):
     photo = tmp_path / "front.jpg"
     photo.write_bytes(png_bytes(size=(1200, 1600)))
     assert len(image_blocks(photo)) == 1
+
+
+def test_text_material_becomes_text_block(tmp_path):
+    txt = tmp_path / "link-01.txt"
+    txt.write_text("출처: https://example.com\n무게 6.8kg", encoding="utf-8")
+    client = ClaudeClient("claude-opus-5-5", "high", client=object())
+    assert client._blocks(txt) == [{"type": "text", "text": "[자료: link-01.txt]\n출처: https://example.com\n무게 6.8kg"}]
