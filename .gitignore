@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+# 작업 데이터 (상품 정보·API 응답 캐시) — 저장소에 올리지 않음
+data/*
+output/*
+!data/.gitkeep
+!output/.gitkeep
+.DS_Store
