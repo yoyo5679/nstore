@@ -4,12 +4,11 @@ import pytest
 from google.genai import errors, types
 
 from nstore.detail.gemini import GeminiClient, GeminiError
-from nstore.detail.schema import ReviewInsights
 
 
 @pytest.fixture
 def client(monkeypatch):
-    c = GeminiClient("test-key", "text-model", "image-model")
+    c = GeminiClient("test-key", "image-model")
     calls = []
 
     def fake_generate(model, contents, config):
@@ -19,19 +18,6 @@ def client(monkeypatch):
     monkeypatch.setattr(c._client.models, "generate_content", fake_generate)
     c.calls = calls
     return c
-
-
-def test_json_uses_schema_and_parses(client, tmp_path):
-    pdf = tmp_path / "catalog.pdf"
-    pdf.write_bytes(b"%PDF-1.4")
-    client._next = types.GenerateContentResponse(candidates=[types.Candidate(content=types.Content(parts=[
-        types.Part(text='{"selling_points": ["가벼움"], "complaints": [], "questions": []}')]))])
-    result = client.json("정리해줘", ReviewInsights, files=[pdf], system="원칙")
-    assert result.selling_points == ["가벼움"]
-    model, contents, config = client.calls[0]
-    assert model == "text-model"
-    assert contents[0].inline_data.mime_type == "application/pdf" and contents[-1] == "정리해줘"
-    assert config.response_mime_type == "application/json" and config.response_schema is ReviewInsights
 
 
 def test_image_returns_bytes_and_sets_ratio(client, tmp_path):

@@ -25,9 +25,12 @@ cache:
 
 # ---------------------------------------------------------------- 2단계: 상세페이지
 
+claude:
+  model: claude-opus-5-5                 # 자료 분석·기획·카피·리뷰 분석·레퍼런스 분석·이미지 프롬프트
+  effort: high                           # low | medium | high | xhigh | max — 높을수록 꼼꼼하지만 느리고 비쌈
+
 gemini:
-  # 모델 이름은 구글이 자주 바꿉니다. 화면의 '사용 가능한 모델 확인' 버튼으로 실제 이름을 확인해 고치세요.
-  text_model: gemini-pro-latest          # 자료 읽기·기획·카피 (PDF·사진 이해)
+  # 이미지 생성만 맡습니다. 모델 이름은 구글이 자주 바꾸니 화면의 '사용 가능한 모델 확인'으로 확인해 고치세요.
   image_model: gemini-nano-banana-2.1    # 연출 컷·배경 편집 (Nano Banana). 고품질: gemini-3-pro-image
   max_reference_photos: 3                # 이미지 생성 때 함께 넣는 실사진 수 (제품 모양 유지용)
   max_generated_images: 6                # 상품당 AI 생성 이미지 최대 수 (비용 관리)

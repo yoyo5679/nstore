@@ -165,6 +165,14 @@ class Workspace:
         path.write_bytes(data)
         return path
 
+    def save_image_prompt(self, section_id: str, prompt: str) -> None:
+        """이미지를 만들 때 Gemini에 실제로 보낸 프롬프트 (화면에서 확인용)."""
+        (self.images_dir / f"{section_id}.txt").write_text(prompt, encoding="utf-8")
+
+    def image_prompt(self, section_id: str) -> str:
+        path = self.images_dir / f"{section_id}.txt"
+        return path.read_text(encoding="utf-8") if path.exists() else ""
+
     def has_image_history(self, section_id: str) -> bool:
         return any(self.history_dir.glob(f"img-{section_id}-*.png")) if self.history_dir.exists() else False
 

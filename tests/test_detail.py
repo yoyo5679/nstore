@@ -1,7 +1,7 @@
 import os
 
 import pytest
-from fakes import SAMPLE_FACTS, FakeGemini, png_bytes, section
+from fakes import SAMPLE_FACTS, FakeClaude, FakePainter, png_bytes, section
 
 from nstore import config
 from nstore.detail import compliance, images, planner, render, theme
@@ -30,7 +30,7 @@ def test_workspace_code_is_folder_safe(ws):
 
 
 def test_extract_facts_sends_docs_and_photos(ws):
-    client = FakeGemini()
+    client = FakeClaude()
     facts = planner.extract_facts(ws, client, {"브랜드": "케어메이트"})
     assert ws.load_facts() == facts
     _, _, files = client.json_calls[0]
@@ -40,7 +40,7 @@ def test_extract_facts_sends_docs_and_photos(ws):
 def test_extract_facts_needs_material(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PRODUCTS_DIR", tmp_path)
     with pytest.raises(ValueError):
-        planner.extract_facts(Workspace("empty"), FakeGemini(), {})
+        planner.extract_facts(Workspace("empty"), FakeClaude(), {})
 
 
 def test_make_plan_normalizes_ai_output(ws):
@@ -50,9 +50,9 @@ def test_make_plan_normalizes_ai_output(ws):
         section("", "weird", "generate", kind="painting"),
         section("s04", "usage", "generate"),
     ]}
-    planner.extract_facts(ws, FakeGemini(), {})
+    planner.extract_facts(ws, FakeClaude(), {})
     (ws.dir / "reviews.txt").write_text("가벼워서 좋아요", encoding="utf-8")
-    client = FakeGemini(raw)
+    client = FakeClaude(raw)
     plan = planner.make_plan(ws, client, {"의료기기여부": ""}, {"main": "성인용보행기", "tags": []}, max_generate=2)
 
     assert [s.id for s in plan.sections] == ["s01", "s02", "s03", "s04"]
@@ -65,18 +65,18 @@ def test_make_plan_normalizes_ai_output(ws):
 
 
 def test_medical_product_prompt_uses_approved_copy(ws):
-    planner.extract_facts(ws, FakeGemini(), {})
+    planner.extract_facts(ws, FakeClaude(), {})
     ws.save_text("approved_copy.txt", "심의 받은 문장입니다.")
-    client = FakeGemini()
+    client = FakeClaude()
     planner.make_plan(ws, client, {"의료기기여부": "Y"}, {}, 6)
     prompt = client.json_calls[-1][0]
     assert "심의 받은 문구에 있는 문장만" in prompt and "심의 받은 문장입니다." in prompt
 
 
 def test_edit_section_changes_only_that_section_and_undo(ws):
-    planner.extract_facts(ws, FakeGemini(), {})
-    plan = planner.make_plan(ws, FakeGemini({"concept": "c", "sections": [section("s01", "hero"), section("s02")]}), {}, {}, 6)
-    updated = planner.edit_section(ws, FakeGemini(), plan, "s02", "더 짧게", {})
+    planner.extract_facts(ws, FakeClaude(), {})
+    plan = planner.make_plan(ws, FakeClaude({"concept": "c", "sections": [section("s01", "hero"), section("s02")]}), {}, {}, 6)
+    updated = planner.edit_section(ws, FakeClaude(), plan, "s02", "더 짧게", {})
     assert [s.id for s in updated.sections] == ["s01", "s02"]
     assert updated.sections[1].type == "feature"               # AI가 바꾼 id·type은 원래대로
     assert updated.sections[1].headline == "고친 헤드라인"
@@ -106,30 +106,59 @@ def test_compliance_medical(ws):
     assert with_copy == ["[s01] 주의: 심의 문구에 없는 문장: 새로 지어낸 문장이에요"]
 
 
-def test_generate_images_uses_photos_as_reference_and_keeps_history(ws):
+def test_claude_writes_image_prompts_and_gemini_draws(ws):
+    planner.extract_facts(ws, FakeClaude(), {})
     plan = Plan.model_validate({"concept": "c", "sections": [
         section("s01", "hero", "generate", photo="side.jpg"),
         section("s02", "feature", "generate", photo="top.jpg", kind="extend"),
         section("s03", "spec", "photo", photo="front.jpg"),
     ]})
-    client = FakeGemini()
-    images.generate_missing(ws, client, plan, SETTINGS)
-    (p1, refs1, ratio1), (p2, refs2, _) = client.image_calls
-    assert [r.name for r in refs1] == ["side.jpg", "back.jpg", "front.jpg"] and ratio1 == "4:5"
-    assert "Do not add any text" in p1
-    assert [r.name for r in refs2] == ["top.jpg"] and p2.startswith("Extend the background")
-    assert images.generate_missing(ws, client, plan, SETTINGS) == ["새로 만들 이미지가 없습니다."]
+    writer, painter = FakeClaude(), FakePainter()
+    images.generate_missing(ws, writer, painter, plan, SETTINGS)
 
-    images.edit_section_image(ws, client, plan.sections[0], "배경을 거실로", SETTINGS)
-    assert client.image_calls[-1][1][0] == ws.section_image("s01")  # 지금 이미지를 고침
+    # Claude: 실사진을 보고 섹션 카피·주의사항을 참고해 프롬프트 작성
+    (ask1, _, seen1), (ask2, _, seen2) = [c for c in writer.json_calls]
+    assert [f.name for f in seen1] == ["side.jpg", "back.jpg", "front.jpg"]
+    assert "사용 장면" in ask1 and "앉기 전 브레이크" in ask1 and "walking in park" in ask1
+    assert "배경 확장" in ask2 and [f.name for f in seen2] == ["top.jpg"]
+
+    # Gemini: Claude가 쓴 프롬프트 + 안전장치 문구, 같은 실사진, 섹션 비율
+    (p1, refs1, ratio1), (_, refs2, _) = painter.image_calls
+    assert p1.startswith("A smiling Korean grandmother") and "Do not add any text" in p1
+    assert [r.name for r in refs1] == ["side.jpg", "back.jpg", "front.jpg"] and ratio1 == "4:5"
+    assert [r.name for r in refs2] == ["top.jpg"]
+    assert ws.image_prompt("s01") == p1
+    assert images.generate_missing(ws, writer, painter, plan, SETTINGS) == ["새로 만들 이미지가 없습니다."]
+
+    images.edit_section_image(ws, writer, painter, plan.sections[0], "배경을 거실로", SETTINGS)
+    assert "편집 프롬프트" in writer.json_calls[-1][0] and "배경을 거실로" in writer.json_calls[-1][0]
+    assert painter.image_calls[-1][1][0] == ws.section_image("s01")  # 지금 이미지를 고침
     assert ws.has_image_history("s01") and ws.undo_section_image("s01")
+
+
+def test_thumbnail_prompt_by_claude(ws):
+    writer, painter = FakeClaude(), FakePainter()
+    path = images.make_thumbnail(ws, writer, painter, SETTINGS)
+    assert path.exists() and painter.image_calls[0][2] == "1:1"
+    assert "흰 배경 제품컷" in writer.json_calls[0][0]
+    assert (ws.work_dir / "thumbnail.txt").read_text(encoding="utf-8") == painter.image_calls[0][0]
+
+
+def test_all_schemas_are_accepted_by_structured_outputs():
+    import anthropic
+
+    from nstore.detail import schema
+
+    for model in (schema.Facts, schema.ReviewInsights, schema.Plan, schema.Section, schema.Theme, schema.ImagePrompt):
+        out = anthropic.transform_schema(model)
+        assert out["type"] == "object" and out.get("additionalProperties") is False
 
 
 def test_theme_from_brand_color_and_sanitize():
     t = theme.from_brand_color("#2f6b5e", "serif", 12)
     assert t.primary == "#2F6B5E" and t.font == "serif" and t.surface.startswith("#")
     assert theme.on_color("#2F6B5E") == "#FFFFFF" and theme.on_color("#FFE14D") == "#17191C"
-    fixed = theme.from_reference(FakeGemini(), [])
+    fixed = theme.from_reference(FakeClaude(), [])
     assert fixed.accent.startswith("#") and fixed.font == "gothic" and fixed.radius == 40
     with pytest.raises(ValueError):
         theme.from_brand_color("green")

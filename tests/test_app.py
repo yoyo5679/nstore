@@ -41,7 +41,7 @@ def test_app_renders_with_results(tmp_path, monkeypatch):
 
 
 def test_detail_page_edit_and_undo(tmp_path, monkeypatch):
-    from fakes import FakeGemini, png_bytes, section
+    from fakes import FakeClaude, png_bytes, section
 
     from nstore.detail import planner
     from nstore.detail.workspace import Workspace
@@ -51,9 +51,9 @@ def test_detail_page_edit_and_undo(tmp_path, monkeypatch):
         monkeypatch.setattr(config, name, path)
     ws = Workspace("A1").ensure()
     (ws.photos_dir / "front.jpg").write_bytes(png_bytes())
-    planner.extract_facts(ws, FakeGemini(), {})
+    planner.extract_facts(ws, FakeClaude(), {})
     plan = {"concept": "c", "sections": [section("s01", "hero", "generate"), section("s02", "faq", items=[("Q", "A")])]}
-    planner.make_plan(ws, FakeGemini(plan), {}, {}, 6)
+    planner.make_plan(ws, FakeClaude(plan), {}, {}, 6)
 
     at = AppTest.from_file(APP).run(timeout=30)
     at.switch_page("ui/detail.py").run(timeout=30)

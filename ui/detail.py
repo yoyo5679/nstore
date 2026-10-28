@@ -17,11 +17,12 @@ from nstore.config import ConfigError
 from nstore.detail import images, planner, render, service
 from nstore.detail import theme as theme_mod
 from nstore.detail.compliance import LEVEL_ERROR, is_medical
+from nstore.detail.claude import ClaudeClient, ClaudeError
 from nstore.detail.gemini import GeminiClient, GeminiError
 from nstore.detail.schema import IMAGE_KINDS, IMAGE_MODES, SECTION_LABELS, SECTION_TYPES, Facts, ImageSpec, Item, Plan, Section
 from nstore.detail.workspace import Workspace
 
-ERRORS = (ConfigError, GeminiError, ValueError, FileNotFoundError)
+ERRORS = (ConfigError, ClaudeError, GeminiError, ValueError, FileNotFoundError)
 MODE_LABELS = {"photo": "실사진 그대로", "generate": "AI로 만들기", "none": "이미지 없음"}
 KIND_LABELS = {"scene": "사용 장면", "detail": "디테일 컷", "cutout": "흰 배경 제품컷", "extend": "실사진 배경 확장"}
 
@@ -29,7 +30,14 @@ KIND_LABELS = {"scene": "사용 장면", "detail": "디테일 컷", "cutout": "�
 # ---------------------------------------------------------------- 공통 도구
 
 @st.cache_resource
+def claude() -> ClaudeClient:
+    """분석·기획·카피·이미지 프롬프트"""
+    return ClaudeClient.from_env()
+
+
+@st.cache_resource
 def gemini() -> GeminiClient:
+    """이미지 그리기"""
     return GeminiClient.from_env()
 
 
@@ -105,8 +113,9 @@ facts = ws.load_facts()
 
 with st.sidebar:
     st.caption(f"상품 폴더: {ws.dir}")
-    with st.expander("Gemini 모델 확인"):
-        st.caption(f"글: `{settings['gemini']['text_model']}`  \n이미지: `{settings['gemini']['image_model']}`")
+    st.caption(f"분석·카피·이미지 프롬프트: Claude `{settings['claude']['model']}` (effort {settings['claude']['effort']})  \n"
+               f"이미지 그리기: Gemini `{settings['gemini']['image_model']}`")
+    with st.expander("Gemini 이미지 모델 확인"):
         if st.button("사용 가능한 모델 확인"):
             models = run("확인 중…", lambda: gemini().list_models())
             if models:
@@ -171,7 +180,7 @@ with left:
 
         st.divider()
         if st.button("자료 정리하기 (AI)", type="primary", disabled=not (photos or ws.docs())):
-            msg = run("카탈로그·설명서를 읽는 중…", lambda: service.run_facts(code, gemini()))
+            msg = run("카탈로그·설명서를 읽는 중…", lambda: service.run_facts(code, claude()))
             if msg:
                 flash(msg)
                 refresh(code)
@@ -194,7 +203,7 @@ with left:
         c1, c2 = st.columns(2)
         if c1.button("구성·카피 만들기 (AI)", type="primary", disabled=facts is None,
                      help=None if facts else "① 자료 정리를 먼저 하세요."):
-            msg = run("섹션 구성과 카피를 쓰는 중…", lambda: service.run_plan(code, gemini()))
+            msg = run("섹션 구성과 카피를 쓰는 중…", lambda: service.run_plan(code, claude()))
             if msg:
                 flash(msg)
                 refresh(code)
@@ -219,7 +228,7 @@ with left:
                                        key=f"{code}:page-instr")
             if st.button("전체 수정 (AI)", disabled=not page_instr):
                 updated = run("페이지 전체를 고치는 중…",
-                              lambda: planner.edit_page(ws, gemini(), plan, page_instr, product, max_gen))
+                              lambda: planner.edit_page(ws, claude(), plan, page_instr, product, max_gen))
                 if updated:
                     flash("페이지 전체를 고쳤습니다. 마음에 안 들면 '되돌리기'를 누르세요.")
                     refresh(code)
@@ -250,7 +259,7 @@ with left:
                     if mode == "generate":
                         kind = st.selectbox("AI 이미지 종류", IMAGE_KINDS, index=IMAGE_KINDS.index(kind),
                                             format_func=KIND_LABELS.get, key=f"{k}:kind")
-                        prompt = st.text_input("장면 설명 (영어가 잘 통함)", sec.image.prompt, key=f"{k}:prompt")
+                        prompt = st.text_input("원하는 장면 (한국어로 쓰면 Claude가 이미지 프롬프트로 바꿉니다)", sec.image.prompt, key=f"{k}:prompt")
 
                     b1, b2, b3, b4 = st.columns(4)
                     if b1.button("저장", key=f"{k}:save", type="primary"):
@@ -281,7 +290,7 @@ with left:
                     instr = st.text_input("이 섹션만 말로 고치기", placeholder="예: 헤드라인을 더 짧게 / 보호자 입장에서 다시",
                                           key=f"{k}:instr")
                     if st.button("AI로 수정", key=f"{k}:ai", disabled=not instr):
-                        updated = run("섹션을 고치는 중…", lambda: planner.edit_section(ws, gemini(), plan, sec.id, instr, product))
+                        updated = run("섹션을 고치는 중…", lambda: planner.edit_section(ws, claude(), plan, sec.id, instr, product))
                         if updated:
                             flash(f"{sec.id}를 고쳤습니다.")
                             refresh(code)
@@ -294,10 +303,10 @@ with left:
             planned = [s for s in plan.sections if s.image.mode == "generate"]
             missing = [s for s in planned if not ws.section_image(s.id)]
             st.caption(f"AI 이미지 {len(planned)}장 계획, {len(missing)}장 남음 (상품당 최대 {max_gen}장 — config/settings.yaml). "
-                       "실사진을 참고로 넣어 제품 모양은 그대로 두고, 이미지 안에 글자는 넣지 않습니다.")
+                       "Claude가 실사진과 카피를 보고 프롬프트를 쓰고, Gemini가 실사진을 참고해 그립니다. 이미지 안에 글자는 넣지 않습니다.")
             if st.button(f"남은 AI 이미지 {len(missing)}장 만들기", type="primary", disabled=not missing):
                 bar = st.progress(0.0)
-                msg = run("이미지를 만드는 중…", lambda: service.run_images(code, gemini(), lambda f, m: bar.progress(f, text=m)))
+                msg = run("이미지를 만드는 중…", lambda: service.run_images(code, claude(), gemini(), lambda f, m: bar.progress(f, text=m)))
                 if msg:
                     flash(msg)
                     refresh(code)
@@ -312,16 +321,19 @@ with left:
                     current = ws.section_image(sec.id) if sec.image.mode == "generate" else ws.photo(sec.image.photo)
                     if current:
                         st.image(str(current), width=280)
+                    if sec.image.mode == "generate" and ws.image_prompt(sec.id):
+                        with st.expander("Gemini에 보낸 프롬프트"):
+                            st.write(ws.image_prompt(sec.id))
                     if sec.image.mode != "generate":
                         continue
                     img_instr = st.text_input("이미지를 말로 고치기", placeholder="예: 배경을 거실로 / 할머니가 웃는 모습으로",
                                               key=f"{k}:img-instr")
                     c1, c2, c3 = st.columns(3)
                     if c1.button("새로 만들기", key=f"{k}:regen"):
-                        if run("이미지를 만드는 중…", lambda: images.generate_section_image(ws, gemini(), sec, settings)):
+                        if run("이미지를 만드는 중…", lambda: images.generate_section_image(ws, claude(), gemini(), sec, settings)):
                             refresh(code)
                     if c2.button("말한 대로 고치기", key=f"{k}:img-edit", disabled=not img_instr):
-                        if run("이미지를 고치는 중…", lambda: images.edit_section_image(ws, gemini(), sec, img_instr, settings)):
+                        if run("이미지를 고치는 중…", lambda: images.edit_section_image(ws, claude(), gemini(), sec, img_instr, settings)):
                             refresh(code)
                     if c3.button("이전 이미지로", key=f"{k}:img-undo", disabled=not ws.has_image_history(sec.id)):
                         ws.undo_section_image(sec.id)
@@ -332,11 +344,14 @@ with left:
         st.caption("네이버 쇼핑 대표이미지는 흰 배경에 글자·로고 없이 올리는 것이 권장되어, 흰 배경 제품컷으로 만듭니다.")
         thumb = ws.work_dir / "thumbnail.png"
         if st.button("대표이미지 만들기", disabled=not ws.photos()):
-            msg = run("대표이미지를 만드는 중…", lambda: service.run_thumbnail(code, gemini()))
+            msg = run("대표이미지를 만드는 중…", lambda: service.run_thumbnail(code, claude(), gemini()))
             if msg:
                 refresh(code)
         if thumb.exists():
             st.image(str(thumb), width=280)
+            if (ws.work_dir / "thumbnail.txt").exists():
+                with st.expander("Gemini에 보낸 프롬프트"):
+                    st.write((ws.work_dir / "thumbnail.txt").read_text(encoding="utf-8"))
 
     # ------------------------------------------------------------ ④ 디자인
     with tab_design:
@@ -360,7 +375,7 @@ with left:
         refs = st.file_uploader("레퍼런스 페이지 캡처 (1~3장)", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True, key=f"{code}:refs")
         if refs and st.button("레퍼런스 반영 (AI)"):
             saved = [ws.add_file(ws.work_dir / "refs", f.name, f.getvalue()) for f in refs[:3]]
-            theme = run("레퍼런스를 분석하는 중…", lambda: theme_mod.from_reference(gemini(), saved))
+            theme = run("레퍼런스를 분석하는 중…", lambda: theme_mod.from_reference(claude(), saved))
             if theme:
                 theme_mod.save(theme, target)
                 flash(f"레퍼런스 분위기를 반영했습니다: {theme.mood}")

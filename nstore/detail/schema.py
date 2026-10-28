@@ -1,6 +1,6 @@
 """상세페이지 데이터 구조.
 
-Gemini에게 이 구조 그대로 JSON을 받도록 요청하므로(구조화 출력), 필드에 기본값을 두지 않습니다.
+Claude에게 이 구조 그대로 JSON을 받도록 요청하므로(구조화 출력), 필드에 기본값을 두지 않습니다.
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ class ImageSpec(BaseModel):
     mode: str  # photo | generate | none
     photo: str  # mode=photo: 실사진 파일명 / kind=extend: 확장할 실사진
     kind: str  # mode=generate: scene | detail | cutout | extend
-    prompt: str  # mode=generate: 장면 설명 (영어)
+    prompt: str  # mode=generate: 원하는 장면 설명 (한국어). 실제 이미지 프롬프트는 생성 직전에 Claude가 씀
 
 
 class Section(BaseModel):
@@ -96,3 +96,7 @@ class Theme(BaseModel):
     font: str  # gothic | serif
     radius: int
     mood: str
+
+
+class ImagePrompt(BaseModel):
+    prompt: str  # Gemini 이미지 모델에 보낼 영어 프롬프트

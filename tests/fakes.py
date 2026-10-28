@@ -6,7 +6,7 @@ import io
 
 from PIL import Image
 
-from nstore.detail.schema import Facts, Plan, ReviewInsights, Section, Theme
+from nstore.detail.schema import Facts, ImagePrompt, Plan, ReviewInsights, Section, Theme
 from nstore.naver import KeywordStat, ShopItem, ShopResult
 
 SILVER = ("생활/건강", "실버용품", "보행보조용품")
@@ -64,7 +64,7 @@ def walker_scenario() -> tuple[FakeSearchAd, FakeShopping]:
 WALKER_SEEDS = ["성인용보행기", "노인보행기", "실버카"]
 
 
-# ---------------------------------------------------------------- 2단계: 가짜 Gemini
+# ---------------------------------------------------------------- 2단계: 가짜 Claude(글)·Gemini(그림)
 
 
 def png_bytes(color="#88AA99", size=(400, 300)) -> bytes:
@@ -89,14 +89,15 @@ def section(sid, stype="feature", mode="none", photo="", kind="scene", headline=
             "image": {"mode": mode, "photo": photo, "kind": kind, "prompt": "walking in park"}}
 
 
-class FakeGemini:
+class FakeClaude:
     def __init__(self, plan: dict | None = None):
         self.plan = plan or {"concept": "든든한 산책", "sections": [section("s01", "hero", "generate")]}
         self.json_calls: list[tuple[str, type, list]] = []
-        self.image_calls: list[tuple[str, list, str | None]] = []
 
     def json(self, prompt, schema, files=(), system=None):
         self.json_calls.append((prompt, schema, list(files)))
+        if schema is ImagePrompt:
+            return ImagePrompt(prompt="A smiling Korean grandmother walks in a sunny park with the walker.")
         if schema is Facts:
             return Facts.model_validate(SAMPLE_FACTS)
         if schema is ReviewInsights:
@@ -109,6 +110,11 @@ class FakeGemini:
             return Theme(primary="#123456", accent="xx", background="#FFFFFF", surface="#F0F0F0",
                          text="#111111", muted="#666666", font="handwriting", radius=99, mood="차분함")
         raise AssertionError(schema)
+
+
+class FakePainter:
+    def __init__(self):
+        self.image_calls: list[tuple[str, list, str | None]] = []
 
     def image(self, prompt, references=(), aspect_ratio=None):
         self.image_calls.append((prompt, list(references), aspect_ratio))

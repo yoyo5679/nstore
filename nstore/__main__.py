@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--template", type=Path, help="스마트스토어센터에서 받은 일괄등록 양식")
 
     p = sub.add_parser("detail", help="상세페이지: products/<상품코드>/ 의 사진·자료로 만들기")
-    p.add_argument("step", choices=DETAIL_STEPS, help="facts→plan→images→thumbnail→export, all=전부, check=문구 검사, models=Gemini 모델 목록")
+    p.add_argument("step", choices=DETAIL_STEPS, help="facts→plan→images→thumbnail→export, all=전부, check=문구 검사, models=Gemini 이미지 모델 목록")
     p.add_argument("codes", nargs="*", help="상품코드 (여러 개 가능)")
     p.add_argument("--all", action="store_true", help="products/ 에 사진·자료가 있는 상품 전체")
     p.add_argument("--platform", nargs="+", choices=["smartstore", "coupang", "toss"], help="내보낼 플랫폼 (기본: 전부)")
@@ -59,15 +59,17 @@ DETAIL_STEPS = ["facts", "plan", "images", "thumbnail", "export", "all", "check"
 def run_detail(args) -> int:
     """여러 상품을 차례로 처리합니다. 한 상품이 실패해도 나머지는 계속합니다."""
     from .detail import service
+    from .detail.claude import ClaudeClient, ClaudeError
     from .detail.gemini import GeminiClient, GeminiError
 
+    # Claude: 분석·기획·카피·이미지 프롬프트 / Gemini: 이미지 그리기
     try:
-        needs_ai = args.step not in ("export", "check")
-        client = GeminiClient.from_env() if needs_ai else None
+        writer = ClaudeClient.from_env() if args.step in ("facts", "plan", "images", "thumbnail", "all") else None
+        painter = GeminiClient.from_env() if args.step in ("images", "thumbnail", "all", "models") else None
         if args.step == "models":
-            print("\n".join(client.list_models()))
+            print("\n".join(painter.list_models()))
             return 0
-    except (ConfigError, GeminiError) as e:
+    except (ConfigError, GeminiError, ClaudeError) as e:
         print(f"[중단] {e}", file=sys.stderr)
         return 1
 
@@ -82,13 +84,13 @@ def run_detail(args) -> int:
         try:
             for step in steps:
                 if step == "facts":
-                    print(code, service.run_facts(code, client), flush=True)
+                    print(code, service.run_facts(code, writer), flush=True)
                 elif step == "plan":
-                    print(code, service.run_plan(code, client), flush=True)
+                    print(code, service.run_plan(code, writer), flush=True)
                 elif step == "images":
-                    print(code, service.run_images(code, client), flush=True)
+                    print(code, service.run_images(code, writer, painter), flush=True)
                 elif step == "thumbnail":
-                    print(code, service.run_thumbnail(code, client), flush=True)
+                    print(code, service.run_thumbnail(code, writer, painter), flush=True)
                 elif step == "export":
                     for note in service.run_export(code, args.platform, args.format):
                         print(code, note, flush=True)
@@ -97,7 +99,7 @@ def run_detail(args) -> int:
                     print(code, "문구 검사 통과" if not findings else "")
                     for f in findings:
                         print("   ", f)
-        except (ConfigError, GeminiError, ValueError, FileNotFoundError) as e:
+        except (ConfigError, ClaudeError, GeminiError, ValueError, FileNotFoundError) as e:
             failed.append(code)
             print(f"{code} [실패] {e}", file=sys.stderr, flush=True)
     if failed:

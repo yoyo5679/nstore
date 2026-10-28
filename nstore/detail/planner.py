@@ -1,11 +1,11 @@
-"""자료 정리 → 리뷰 분석 → 섹션 구성·카피 → 말로 수정."""
+"""자료 정리 → 리뷰 분석 → 섹션 구성·카피 → 말로 수정. 모두 Claude가 합니다."""
 
 from __future__ import annotations
 
 import json
 
 from .compliance import is_medical
-from .gemini import GeminiClient
+from .claude import ClaudeClient
 from .schema import IMAGE_KINDS, IMAGE_MODES, SECTION_LABELS, SECTION_TYPES, Facts, Plan, ReviewInsights, Section
 from .workspace import Workspace
 
@@ -17,7 +17,7 @@ SYSTEM = """당신은 한국 복지용구·실버용품 전문 상세페이지 �
 2. 효능·효과를 과장하지 않습니다. '치료', '완치', '예방 보장', '최고', '1위', '유일', '부작용 없음' 같은 표현은 쓰지 않습니다.
 3. 장기요양 본인부담금 할인·면제·무료를 암시하는 문구를 쓰지 않습니다.
 4. 문장은 짧고 쉽게, 존댓말로 씁니다. 헤드라인은 두 줄 이내로 짧게 쓰고, 줄을 나눌 곳에는 \\n 을 넣습니다.
-5. 글은 한국어로 씁니다. 이미지 생성 지시(image.prompt)만 영어로 씁니다."""
+5. 모든 글은 한국어로 씁니다."""
 
 FLOW = """기본 흐름 (상품에 맞게 섹션을 빼거나 feature 를 2~4개로 조절할 수 있습니다):
 - hero (후킹): 보호자가 멈춰서 읽게 만드는 첫 화면. eyebrow 에 브랜드나 품목, headline 에 핵심 약속.
@@ -35,7 +35,9 @@ IMAGE_RULES = """이미지 계획 (image):
 - mode='photo': 실사진을 그대로 씁니다. photo 에 아래 실사진 목록의 파일명을 정확히 적습니다.
 - mode='generate': AI가 실사진을 참고해 새 이미지를 만듭니다. kind 는
   scene(사용 장면, 한국 가정에서 어르신·보호자가 쓰는 모습), detail(부분 확대), cutout(흰 배경 제품컷),
-  extend(실사진 배경을 넓혀 화면을 채움 — photo 에 원본 파일명) 중 하나. prompt 에 장면을 영어로 구체적으로 적습니다.
+  extend(실사진 배경을 넓혀 화면을 채움 — photo 에 원본 파일명) 중 하나. prompt 에 원하는 장면을 한국어로 구체적으로 적습니다
+  (누가, 어디서, 제품의 어느 부분을, 어떤 분위기로). 실제 이미지 생성 지시문은 나중에 따로 만듭니다.
+  generate 일 때 photo 에는 제품 모양을 맞출 기준 사진을 적어도 됩니다.
 - mode='none': 이미지 없음 (faq, caution, spec 등 글이 중심인 섹션).
 - AI 생성 이미지는 최대 {max_generate}장까지만 계획하세요. 나머지는 실사진이나 none 으로."""
 
@@ -44,7 +46,7 @@ def _dump(obj) -> str:
     return obj.model_dump_json(indent=1) if obj is not None else "없음"
 
 
-def extract_facts(ws: Workspace, client: GeminiClient, product: dict) -> Facts:
+def extract_facts(ws: Workspace, client: ClaudeClient, product: dict) -> Facts:
     files = ws.docs() + ws.photos()[:6]
     if not files:
         raise ValueError(f"{ws.dir} 에 사진(photos/)이나 자료(docs/)가 없습니다.")
@@ -62,7 +64,7 @@ def extract_facts(ws: Workspace, client: GeminiClient, product: dict) -> Facts:
     return facts
 
 
-def analyze_reviews(ws: Workspace, client: GeminiClient) -> ReviewInsights | None:
+def analyze_reviews(ws: Workspace, client: ClaudeClient) -> ReviewInsights | None:
     text = ws.reviews_text()
     if not text:
         return None
@@ -95,7 +97,7 @@ def _medical_rule(product: dict, approved: str) -> str:
 이 제품은 의료기기라 상세페이지를 게시하기 전에 광고 자율심의를 받아야 합니다. 심의 신청용 초안으로, 자료 문장을 최대한 그대로 옮기고 해석·평가하는 표현을 넣지 마세요."""
 
 
-def make_plan(ws: Workspace, client: GeminiClient, product: dict, keywords: dict, max_generate: int) -> Plan:
+def make_plan(ws: Workspace, client: ClaudeClient, product: dict, keywords: dict, max_generate: int) -> Plan:
     facts = ws.load_facts()
     if facts is None:
         raise ValueError("먼저 자료 정리(사실 추출)를 하세요.")
@@ -125,7 +127,7 @@ concept 에는 이 페이지의 핵심 메시지를 한 문장으로 적으세�
     return plan
 
 
-def edit_section(ws: Workspace, client: GeminiClient, plan: Plan, section_id: str, instruction: str, product: dict) -> Plan:
+def edit_section(ws: Workspace, client: ClaudeClient, plan: Plan, section_id: str, instruction: str, product: dict) -> Plan:
     """한 섹션만 말로 고칩니다."""
     target = next(s for s in plan.sections if s.id == section_id)
     prompt = f"""상세페이지의 섹션 하나만 고치세요.
@@ -148,7 +150,7 @@ def edit_section(ws: Workspace, client: GeminiClient, plan: Plan, section_id: st
     return updated
 
 
-def edit_page(ws: Workspace, client: GeminiClient, plan: Plan, instruction: str, product: dict, max_generate: int) -> Plan:
+def edit_page(ws: Workspace, client: ClaudeClient, plan: Plan, instruction: str, product: dict, max_generate: int) -> Plan:
     """페이지 전체(톤, 순서, 섹션 추가·삭제)를 말로 고칩니다."""
     prompt = f"""상세페이지 전체에 다음 요청을 반영하세요.
 

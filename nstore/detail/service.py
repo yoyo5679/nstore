@@ -5,12 +5,13 @@ from __future__ import annotations
 from .. import config
 from ..master import load_master
 from . import images, planner, render
+from .claude import ClaudeClient
 from .compliance import Finding, check_plan
 from .gemini import GeminiClient
 from .schema import Plan
 from .workspace import Workspace
 
-# Gemini에게 넘길 상품 정보 (긴 상세설명 원문은 빼고)
+# Claude에게 넘길 상품 정보 (긴 상세설명 원문은 빼고)
 PRODUCT_FIELDS = [
     "자사몰상품코드", "자사몰상품명", "최종상품명", "추천상품명", "브랜드", "제조사", "모델명", "품목",
     "원산지", "옵션", "의료기기여부", "허가신고번호", "광고심의번호", "메인키워드", "최종태그", "추천태그",
@@ -57,27 +58,27 @@ def max_generate() -> int:
     return settings()["gemini"]["max_generated_images"]
 
 
-def run_facts(code: str, client: GeminiClient) -> str:
+def run_facts(code: str, writer: ClaudeClient) -> str:
     ws = Workspace(code)
-    facts = planner.extract_facts(ws, client, product_info(code))
+    facts = planner.extract_facts(ws, writer, product_info(code))
     msg = f"자료 정리: 특징 {len(facts.features)}개, 규격 {len(facts.specs)}개"
     return msg + (f", 확인 못 한 항목 {len(facts.unknowns)}개" if facts.unknowns else "")
 
 
-def run_plan(code: str, client: GeminiClient) -> str:
+def run_plan(code: str, writer: ClaudeClient) -> str:
     product = product_info(code)
-    plan = planner.make_plan(Workspace(code), client, product, keywords_for(product), max_generate())
+    plan = planner.make_plan(Workspace(code), writer, product, keywords_for(product), max_generate())
     return f"구성·카피: 섹션 {len(plan.sections)}개 — {plan.concept}"
 
 
-def run_images(code: str, client: GeminiClient, progress=None) -> str:
+def run_images(code: str, writer: ClaudeClient, painter: GeminiClient, progress=None) -> str:
     ws = Workspace(code)
     plan = _require_plan(ws)
-    return "; ".join(images.generate_missing(ws, client, plan, settings(), progress))
+    return "; ".join(images.generate_missing(ws, writer, painter, plan, settings(), progress))
 
 
-def run_thumbnail(code: str, client: GeminiClient) -> str:
-    return f"대표이미지: {images.make_thumbnail(Workspace(code), client, settings())}"
+def run_thumbnail(code: str, writer: ClaudeClient, painter: GeminiClient) -> str:
+    return f"대표이미지: {images.make_thumbnail(Workspace(code), writer, painter, settings())}"
 
 
 def run_export(code: str, platforms: list[str] | None = None, formats: list[str] | None = None) -> list[str]:

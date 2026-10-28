@@ -1,4 +1,4 @@
-"""Gemini API 연결. 글(구조화 JSON)과 이미지 두 가지만 씁니다."""
+"""Gemini API 연결 — 이미지 생성(Nano Banana)만 씁니다. 분석·글·이미지 프롬프트는 Claude(claude.py)가 맡습니다."""
 
 from __future__ import annotations
 
@@ -6,13 +6,9 @@ import mimetypes
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TypeVar
-
-from pydantic import BaseModel
 
 from ..config import load_yaml, require_env
 
-T = TypeVar("T", bound=BaseModel)
 INLINE_LIMIT = 15 * 1024 * 1024  # 이보다 큰 파일(두꺼운 카탈로그 PDF)은 업로드 후 참조
 RETRY_CODES = {429, 500, 503}
 
@@ -22,17 +18,16 @@ class GeminiError(RuntimeError):
 
 
 class GeminiClient:
-    def __init__(self, api_key: str, text_model: str, image_model: str):
+    def __init__(self, api_key: str, image_model: str):
         from google import genai
 
         self._client = genai.Client(api_key=api_key)
-        self.text_model = text_model
         self.image_model = image_model
 
     @classmethod
     def from_env(cls) -> "GeminiClient":
         cfg = load_yaml("settings.yaml")["gemini"]
-        return cls(require_env("GEMINI_API_KEY"), cfg["text_model"], cfg["image_model"])
+        return cls(require_env("GEMINI_API_KEY"), cfg["image_model"])
 
     def _part(self, path: Path):
         from google.genai import types
@@ -60,22 +55,6 @@ class GeminiClient:
                     raise GeminiError(f"Gemini 호출 실패 ({e.code}): {e.message}") from e
                 time.sleep(delay)
                 delay *= 2
-
-    def json(self, prompt: str, schema: type[T], files: Sequence[Path] = (), system: str | None = None) -> T:
-        from google.genai import types
-
-        config = types.GenerateContentConfig(
-            system_instruction=system,
-            response_mime_type="application/json",
-            response_schema=schema,
-        )
-        resp = self._call(self.text_model, [*(self._part(f) for f in files), prompt], config)
-        if isinstance(resp.parsed, schema):
-            return resp.parsed
-        try:
-            return schema.model_validate_json(resp.text or "")
-        except ValueError as e:
-            raise GeminiError(f"Gemini 응답을 읽지 못했습니다: {(resp.text or '')[:300]}") from e
 
     def image(self, prompt: str, references: Sequence[Path] = (), aspect_ratio: str | None = None) -> bytes:
         from google.genai import types
