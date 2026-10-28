@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from .claude import ClaudeClient
+from .claude import Writer
 from .gemini import GeminiClient
 from .schema import SECTION_LABELS, ImagePrompt, Plan, Section
 from .workspace import Workspace
@@ -45,7 +45,7 @@ KEEP_PRODUCT = (
 
 
 def write_prompt(
-    writer: ClaudeClient,
+    writer: Writer,
     ws: Workspace,
     *,
     kind: str,
@@ -92,7 +92,7 @@ def aspect_ratio(section: Section, settings: dict) -> str:
 
 
 def generate_section_image(
-    ws: Workspace, writer: ClaudeClient, painter: GeminiClient, section: Section, settings: dict, instruction: str = ""
+    ws: Workspace, writer: Writer, painter: GeminiClient, section: Section, settings: dict, instruction: str = ""
 ) -> Path:
     kind = section.image.kind if section.image.kind in KIND_GUIDE else "scene"
     if kind == "extend" and not ws.photo(section.image.photo):
@@ -109,7 +109,7 @@ def generate_section_image(
 
 
 def edit_section_image(
-    ws: Workspace, writer: ClaudeClient, painter: GeminiClient, section: Section, instruction: str, settings: dict
+    ws: Workspace, writer: Writer, painter: GeminiClient, section: Section, instruction: str, settings: dict
 ) -> Path:
     """지금 이미지를 바탕으로 말한 부분만 고칩니다."""
     current = ws.section_image(section.id) or ws.photo(section.image.photo)
@@ -125,7 +125,7 @@ def edit_section_image(
     return path
 
 
-def generate_missing(ws: Workspace, writer: ClaudeClient, painter: GeminiClient, plan: Plan, settings: dict, progress=None) -> list[str]:
+def generate_missing(ws: Workspace, writer: Writer, painter: GeminiClient, plan: Plan, settings: dict, progress=None) -> list[str]:
     """아직 이미지가 없는 'generate' 섹션만 만듭니다."""
     targets = [s for s in plan.sections if s.image.mode == "generate" and not ws.section_image(s.id)]
     notes = []
@@ -137,7 +137,7 @@ def generate_missing(ws: Workspace, writer: ClaudeClient, painter: GeminiClient,
     return notes or ["새로 만들 이미지가 없습니다."]
 
 
-def make_thumbnail(ws: Workspace, writer: ClaudeClient, painter: GeminiClient, settings: dict) -> Path:
+def make_thumbnail(ws: Workspace, writer: Writer, painter: GeminiClient, settings: dict) -> Path:
     """대표이미지용 흰 배경 제품컷. 네이버 쇼핑 대표이미지 가이드에 맞춰 글자는 넣지 않습니다."""
     refs = ws.photos()[: settings["gemini"]["max_reference_photos"]]
     if not refs:

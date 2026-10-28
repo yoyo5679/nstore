@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from .. import config
-from .claude import ClaudeClient
+from .claude import Writer
 from .schema import Theme
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -74,7 +74,7 @@ def sanitize(theme: Theme) -> Theme:
     return Theme(**data)
 
 
-def from_reference(client: ClaudeClient, images: list[Path]) -> Theme:
+def from_reference(client: Writer, images: list[Path]) -> Theme:
     """마음에 드는 상세페이지 캡처에서 색·폰트·분위기를 가져옵니다."""
     prompt = """첨부한 상세페이지(레퍼런스)의 디자인을 분석해 테마로 정리하세요.
 - primary: 제목 강조·버튼에 쓰인 대표 색, accent: 더 진한 보조 색

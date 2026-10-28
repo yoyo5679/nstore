@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from .compliance import is_medical
-from .claude import ClaudeClient
+from .claude import Writer
 from .schema import IMAGE_KINDS, IMAGE_MODES, SECTION_LABELS, SECTION_TYPES, Facts, Plan, ReviewInsights, Section
 from .workspace import Workspace
 
@@ -46,15 +46,18 @@ def _dump(obj) -> str:
     return obj.model_dump_json(indent=1) if obj is not None else "없음"
 
 
-def extract_facts(ws: Workspace, client: ClaudeClient, product: dict) -> Facts:
+def extract_facts(ws: Workspace, client: Writer, product: dict) -> Facts:
     files = ws.docs() + ws.photos()[:6]
     if not files:
         raise ValueError(f"{ws.dir} 에 사진(photos/)이나 자료(docs/)가 없습니다.")
     prompt = f"""첨부한 카탈로그·사용설명서·제품 사진만 근거로 이 제품의 사실을 정리하세요.
 
 - 자료에 없는 내용은 절대 만들지 마세요. 확인하지 못한 중요한 정보(무게, 최대 하중, 재질 등)는 unknowns 에 적으세요.
-- 숫자는 자료에 적힌 그대로 단위까지 적으세요.
-- features[].source 에 근거(파일 이름과 페이지)를 적으세요.
+- 각 목록에는 자료에 실제로 적힌 항목만 넣으세요. 해당 내용이 없으면 빈 목록으로 두세요.
+  "자료에 없습니다" 같은 설명이나 메모는 목록에 넣지 말고 unknowns 에만 적으세요. 이 목록들은 상세페이지에 그대로 실립니다.
+- 숫자는 자료에 적힌 그대로 단위까지 적으세요. specs[].value 에는 값만 적고 출처는 붙이지 마세요.
+- components 에는 자료에 적힌 구성품만 적으세요. 사진으로 본 외형을 추측해 적지 마세요.
+- features[].source 에만 근거(파일 이름과 페이지)를 적으세요.
 - certifications 에는 의료기기 허가·신고 번호, 인증, 복지용구 제품코드 등 자료에 적힌 것만 적으세요.
 - 효능·효과는 자료의 표현을 바꾸거나 부풀리지 마세요.
 
@@ -64,7 +67,7 @@ def extract_facts(ws: Workspace, client: ClaudeClient, product: dict) -> Facts:
     return facts
 
 
-def analyze_reviews(ws: Workspace, client: ClaudeClient) -> ReviewInsights | None:
+def analyze_reviews(ws: Workspace, client: Writer) -> ReviewInsights | None:
     text = ws.reviews_text()
     if not text:
         return None
@@ -97,7 +100,7 @@ def _medical_rule(product: dict, approved: str) -> str:
 이 제품은 의료기기라 상세페이지를 게시하기 전에 광고 자율심의를 받아야 합니다. 심의 신청용 초안으로, 자료 문장을 최대한 그대로 옮기고 해석·평가하는 표현을 넣지 마세요."""
 
 
-def make_plan(ws: Workspace, client: ClaudeClient, product: dict, keywords: dict, max_generate: int) -> Plan:
+def make_plan(ws: Workspace, client: Writer, product: dict, keywords: dict, max_generate: int) -> Plan:
     facts = ws.load_facts()
     if facts is None:
         raise ValueError("먼저 자료 정리(사실 추출)를 하세요.")
@@ -127,7 +130,7 @@ concept 에는 이 페이지의 핵심 메시지를 한 문장으로 적으세�
     return plan
 
 
-def edit_section(ws: Workspace, client: ClaudeClient, plan: Plan, section_id: str, instruction: str, product: dict) -> Plan:
+def edit_section(ws: Workspace, client: Writer, plan: Plan, section_id: str, instruction: str, product: dict) -> Plan:
     """한 섹션만 말로 고칩니다."""
     target = next(s for s in plan.sections if s.id == section_id)
     prompt = f"""상세페이지의 섹션 하나만 고치세요.
@@ -150,7 +153,7 @@ def edit_section(ws: Workspace, client: ClaudeClient, plan: Plan, section_id: st
     return updated
 
 
-def edit_page(ws: Workspace, client: ClaudeClient, plan: Plan, instruction: str, product: dict, max_generate: int) -> Plan:
+def edit_page(ws: Workspace, client: Writer, plan: Plan, instruction: str, product: dict, max_generate: int) -> Plan:
     """페이지 전체(톤, 순서, 섹션 추가·삭제)를 말로 고칩니다."""
     prompt = f"""상세페이지 전체에 다음 요청을 반영하세요.
 

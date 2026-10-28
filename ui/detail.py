@@ -17,7 +17,7 @@ from nstore.config import ConfigError
 from nstore.detail import images, planner, render, service
 from nstore.detail import theme as theme_mod
 from nstore.detail.compliance import LEVEL_ERROR, is_medical
-from nstore.detail.claude import ClaudeClient, ClaudeError
+from nstore.detail.claude import ClaudeError, Writer, make_writer
 from nstore.detail.gemini import GeminiClient, GeminiError
 from nstore.detail.schema import IMAGE_KINDS, IMAGE_MODES, SECTION_LABELS, SECTION_TYPES, Facts, ImageSpec, Item, Plan, Section
 from nstore.detail.workspace import Workspace
@@ -30,9 +30,9 @@ KIND_LABELS = {"scene": "사용 장면", "detail": "디테일 컷", "cutout": "�
 # ---------------------------------------------------------------- 공통 도구
 
 @st.cache_resource
-def claude() -> ClaudeClient:
-    """분석·기획·카피·이미지 프롬프트"""
-    return ClaudeClient.from_env()
+def claude() -> Writer:
+    """분석·기획·카피·이미지 프롬프트 (터미널의 Claude Code 또는 API — settings.yaml 의 claude.backend)"""
+    return make_writer()
 
 
 @st.cache_resource
@@ -113,7 +113,8 @@ facts = ws.load_facts()
 
 with st.sidebar:
     st.caption(f"상품 폴더: {ws.dir}")
-    st.caption(f"분석·카피·이미지 프롬프트: Claude `{settings['claude']['model']}` (effort {settings['claude']['effort']})  \n"
+    backend = "터미널 Claude Code" if settings["claude"].get("backend", "cli") == "cli" else "Anthropic API"
+    st.caption(f"분석·카피·이미지 프롬프트: Claude `{settings['claude']['model']}` ({backend}, effort {settings['claude']['effort']})  \n"
                f"이미지 그리기: Gemini `{settings['gemini']['image_model']}`")
     with st.expander("Gemini 이미지 모델 확인"):
         if st.button("사용 가능한 모델 확인"):

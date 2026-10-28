@@ -26,8 +26,12 @@ cache:
 # ---------------------------------------------------------------- 2단계: 상세페이지
 
 claude:
-  model: claude-opus-5-5                 # 자료 분석·기획·카피·리뷰 분석·레퍼런스 분석·이미지 프롬프트
-  effort: high                           # low | medium | high | xhigh | max — 높을수록 꼼꼼하지만 느리고 비쌈
+  # 자료 분석·기획·카피·리뷰 분석·레퍼런스 분석·이미지 프롬프트를 맡습니다.
+  backend: cli                           # cli = 터미널의 Claude Code (구독 로그인, API 키 불필요) / api = Anthropic API 키
+  model: claude-opus-5-5
+  effort: high                           # low | medium | high | xhigh | max — 높을수록 꼼꼼하지만 느리고 사용량이 많음
+  cli_path: ""                           # 비워두면 터미널의 'claude' 명령을 씀
+  cli_timeout_minutes: 20                # 두꺼운 카탈로그는 읽는 데 오래 걸릴 수 있음
 
 gemini:
   # 이미지 생성만 맡습니다. 모델 이름은 구글이 자주 바꾸니 화면의 '사용 가능한 모델 확인'으로 확인해 고치세요.

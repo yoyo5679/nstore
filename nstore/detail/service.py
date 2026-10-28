@@ -5,7 +5,7 @@ from __future__ import annotations
 from .. import config
 from ..master import load_master
 from . import images, planner, render
-from .claude import ClaudeClient
+from .claude import Writer
 from .compliance import Finding, check_plan
 from .gemini import GeminiClient
 from .schema import Plan
@@ -58,26 +58,26 @@ def max_generate() -> int:
     return settings()["gemini"]["max_generated_images"]
 
 
-def run_facts(code: str, writer: ClaudeClient) -> str:
+def run_facts(code: str, writer: Writer) -> str:
     ws = Workspace(code)
     facts = planner.extract_facts(ws, writer, product_info(code))
     msg = f"자료 정리: 특징 {len(facts.features)}개, 규격 {len(facts.specs)}개"
     return msg + (f", 확인 못 한 항목 {len(facts.unknowns)}개" if facts.unknowns else "")
 
 
-def run_plan(code: str, writer: ClaudeClient) -> str:
+def run_plan(code: str, writer: Writer) -> str:
     product = product_info(code)
     plan = planner.make_plan(Workspace(code), writer, product, keywords_for(product), max_generate())
     return f"구성·카피: 섹션 {len(plan.sections)}개 — {plan.concept}"
 
 
-def run_images(code: str, writer: ClaudeClient, painter: GeminiClient, progress=None) -> str:
+def run_images(code: str, writer: Writer, painter: GeminiClient, progress=None) -> str:
     ws = Workspace(code)
     plan = _require_plan(ws)
     return "; ".join(images.generate_missing(ws, writer, painter, plan, settings(), progress))
 
 
-def run_thumbnail(code: str, writer: ClaudeClient, painter: GeminiClient) -> str:
+def run_thumbnail(code: str, writer: Writer, painter: GeminiClient) -> str:
     return f"대표이미지: {images.make_thumbnail(Workspace(code), writer, painter, settings())}"
 
 

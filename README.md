@@ -3,7 +3,7 @@
 복지용구(의료기기 포함) 상품 400여 개를 스마트스토어에 옮기면서
 
 1. **키워드·상품명·태그 엑셀 작업** (1단계)
-2. **상세페이지 만들기** — 분석·카피·이미지 프롬프트는 Claude, 이미지 그리기는 Gemini (2단계)
+2. **상세페이지 만들기** — 분석·카피·이미지 프롬프트는 Claude(터미널의 Claude Code), 이미지 그리기는 Gemini (2단계)
 
 를 하는 프로그램입니다.
 
@@ -61,13 +61,25 @@
    playwright install chromium
    ```
 
-9. API 키 파일 만들기
+9. Claude Code 설치 (이미 쓰고 있으면 건너뛰기)
+
+   ```bash
+   curl -fsSL https://claude.ai/install.sh | bash
+   ```
+
+10. Claude Code 로그인 — 아래 명령으로 한 번 실행해서 Claude 계정(Pro·Max 구독)으로 로그인한 뒤 `/exit` 로 나옵니다. 이 프로그램은 그 로그인으로 Claude를 부르므로 Claude API 키가 필요 없습니다.
+
+   ```bash
+   claude
+   ```
+
+11. API 키 파일 만들기
 
    ```bash
    cp .env.example .env
    ```
 
-10. 키 입력 — 텍스트 편집기가 열리면 값을 채우고 저장
+12. 키 입력 — 텍스트 편집기가 열리면 값을 채우고 저장
 
    ```bash
    open -e .env
@@ -79,7 +91,7 @@
 |---|---|---|
 | `NAVER_AD_API_KEY` / `NAVER_AD_SECRET_KEY` / `NAVER_AD_CUSTOMER_ID` | 네이버 검색광고(searchad.naver.com) → 도구 → API 사용 관리. 광고비를 쓰지 않아도 계정만 있으면 발급됩니다. | 월간 검색수, 연관키워드 |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | 네이버 개발자센터(developers.naver.com) → 애플리케이션 등록 → 사용 API에 '검색' 추가 | 경쟁 상품 수, 상위 상품 카테고리 |
-| `ANTHROPIC_API_KEY` | Claude Console(console.anthropic.com) → API Keys | 2단계 자료 분석·기획·카피·이미지 프롬프트 |
+| `ANTHROPIC_API_KEY` | (선택) Claude Console → API Keys | Claude를 터미널 대신 API로 쓸 때만 (`claude.backend: api`) |
 | `GEMINI_API_KEY` | Google AI Studio | 2단계 이미지 그리기 |
 
 ---
@@ -156,7 +168,7 @@ streamlit run app.py
 
 역할을 나눴습니다.
 
-- **Claude**: 자료 분석, 리뷰 분석, 섹션 구성·카피, 말로 고치기, 레퍼런스 분위기 분석, 이미지 프롬프트 작성
+- **Claude** (터미널의 Claude Code): 자료 분석, 리뷰 분석, 섹션 구성·카피, 말로 고치기, 레퍼런스 분위기 분석, 이미지 프롬프트 작성
 - **Gemini (Nano Banana)**: Claude가 쓴 프롬프트와 실사진을 받아 이미지 그리기
 
 상품 하나당 아래 순서로 진행합니다. 화면 오른쪽에 페이지 미리보기가 계속 보입니다.
@@ -208,21 +220,26 @@ python -m nstore detail plan A1001 A1002
 
 한 상품이 실패해도 나머지는 계속 처리하고, 끝에 실패한 상품을 알려줍니다.
 
+`all`은 이미 끝난 단계(자료 정리, 구성·카피, 이미 만든 이미지, 대표이미지)를 건너뜁니다. 그래서 중간에 멈춰도 같은 명령을 다시 실행하면 이어서 진행합니다. 처음부터 다시 만들려면 `--redo`를 붙이세요. Claude 구독 사용 한도에 걸리면 그 자리에서 멈추고 남은 상품 수를 알려주니, 한도가 풀린 뒤 같은 명령을 다시 실행하면 됩니다.
+
 ### 모델 설정
 
 `config/settings.yaml`에서 바꿉니다.
 
+- `claude.backend`: 기본 `cli`
+  - `cli`: 터미널의 Claude Code(`claude -p`)를 부릅니다. 구독 로그인으로 돌아가고 Claude API 비용이 따로 들지 않는 대신, 구독 사용 한도 안에서 돌아갑니다. Claude Code는 파일 읽기 도구만 쓸 수 있게 제한해서 사진·PDF를 읽기만 하고 다른 파일을 고치거나 명령을 실행하지 않습니다. `.env`에 `ANTHROPIC_API_KEY`가 있어도 이 방식에서는 넘기지 않아서 API로 과금되지 않습니다.
+  - `api`: Anthropic API를 직접 부릅니다. `ANTHROPIC_API_KEY`가 필요하고 쓴 만큼 과금됩니다. 한도 걱정 없이 빠르게 돌리고 싶을 때 씁니다.
 - `claude.model`: 기본 `claude-opus-5-5`
-- `claude.effort`: 기본 `high`. `medium`으로 낮추면 더 빠르고 싸지만 덜 꼼꼼합니다.
+- `claude.effort`: 기본 `high`. `medium`으로 낮추면 더 빠르고 사용량이 줄지만 덜 꼼꼼합니다. 400개를 구독 한도 안에서 돌리려면 `medium`도 고려해 보세요.
 - `gemini.image_model`: 기본 `gemini-nano-banana-2.1`. 구글이 이미지 모델 이름을 자주 바꾸고 예전 이름은 종료하니, 화면 왼쪽 **Gemini 이미지 모델 확인**이나 아래 명령으로 실제 이름을 확인하고 맞춰 주세요.
 
-Claude가 안전 기준 때문에 요청을 거절하면 서버가 다른 Claude 모델로 자동으로 다시 시도하도록 설정해 두었습니다(fallbacks).
+`api` 방식에서는 Claude가 안전 기준 때문에 요청을 거절하면 서버가 다른 Claude 모델로 자동으로 다시 시도하도록 설정해 두었습니다(fallbacks).
 
 ```bash
 python -m nstore detail models
 ```
 
-비용은 상품당 Claude 호출이 자료 정리·리뷰 분석·구성 카피 2~3번에 이미지 한 장마다 프롬프트 1번이고, Gemini 이미지는 최대 6장과 대표이미지 1장입니다. 이미지 수는 `max_generated_images`로 줄일 수 있습니다.
+상품당 Claude 호출은 자료 정리·리뷰 분석·구성 카피 2~3번에 이미지 한 장마다 프롬프트 1번이고, Gemini 이미지는 최대 6장과 대표이미지 1장입니다. 이미지 수는 `max_generated_images`로 줄일 수 있습니다.
 
 ## 개발
 

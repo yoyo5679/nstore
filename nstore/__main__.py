@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--all", action="store_true", help="products/ 에 사진·자료가 있는 상품 전체")
     p.add_argument("--platform", nargs="+", choices=["smartstore", "coupang", "toss"], help="내보낼 플랫폼 (기본: 전부)")
     p.add_argument("--format", nargs="+", choices=["jpg", "png", "webp"], default=["jpg"], help="이미지 형식 (기본: jpg)")
+    p.add_argument("--redo", action="store_true", help="all 단계에서 이미 끝난 자료 정리·구성·대표이미지도 다시 만들기")
 
     args = parser.parse_args(argv)
     if args.command == "detail":
@@ -57,14 +58,19 @@ DETAIL_STEPS = ["facts", "plan", "images", "thumbnail", "export", "all", "check"
 
 
 def run_detail(args) -> int:
-    """여러 상품을 차례로 처리합니다. 한 상품이 실패해도 나머지는 계속합니다."""
+    """여러 상품을 차례로 처리합니다. 한 상품이 실패해도 나머지는 계속합니다.
+
+    'all' 은 이미 끝난 단계를 건너뛰므로, 중간에 멈춰도 같은 명령을 다시 실행하면 이어서 합니다.
+    Claude 사용 한도에 걸리면 거기서 멈춥니다.
+    """
     from .detail import service
-    from .detail.claude import ClaudeClient, ClaudeError
+    from .detail.claude import ClaudeError, ClaudeLimitError, make_writer
     from .detail.gemini import GeminiClient, GeminiError
+    from .detail.workspace import Workspace
 
     # Claude: 분석·기획·카피·이미지 프롬프트 / Gemini: 이미지 그리기
     try:
-        writer = ClaudeClient.from_env() if args.step in ("facts", "plan", "images", "thumbnail", "all") else None
+        writer = make_writer() if args.step in ("facts", "plan", "images", "thumbnail", "all") else None
         painter = GeminiClient.from_env() if args.step in ("images", "thumbnail", "all", "models") else None
         if args.step == "models":
             print("\n".join(painter.list_models()))
@@ -79,10 +85,16 @@ def run_detail(args) -> int:
         return 1
 
     steps = ["facts", "plan", "images", "thumbnail", "export"] if args.step == "all" else [args.step]
+    resume = args.step == "all" and not args.redo
     failed = []
-    for code in codes:
+    for n, code in enumerate(codes):
+        ws = Workspace(code)
+        done = {"facts": ws.load_facts() is not None, "plan": ws.load_plan() is not None,
+                "thumbnail": (ws.work_dir / "thumbnail.png").exists()}
         try:
             for step in steps:
+                if resume and done.get(step):
+                    continue
                 if step == "facts":
                     print(code, service.run_facts(code, writer), flush=True)
                 elif step == "plan":
@@ -99,6 +111,10 @@ def run_detail(args) -> int:
                     print(code, "문구 검사 통과" if not findings else "")
                     for f in findings:
                         print("   ", f)
+        except ClaudeLimitError as e:
+            print(f"{code} [멈춤] {e}", file=sys.stderr, flush=True)
+            print(f"남은 상품 {len(codes) - n}개 — 한도가 풀리면 같은 명령을 다시 실행하세요.", file=sys.stderr)
+            return 1
         except (ConfigError, ClaudeError, GeminiError, ValueError, FileNotFoundError) as e:
             failed.append(code)
             print(f"{code} [실패] {e}", file=sys.stderr, flush=True)
